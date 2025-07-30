@@ -1,48 +1,56 @@
-# 4. Kirajzolás a fő ciklusban
-# A sprite-ot minden frame-ben rajzold ki a friss pozícióban. Ezt mindig 
-# a screen.fill után és a display.flip előtt tedd!
+# HÁZI FELADAT
+# Adj a játékosnak lövés-lehetőséget: amikor a Space billentyűt lenyomod,
+# jelenjen meg egy fehér pont (pl. pygame.draw.circle) a sprite tetején!
 
 import pygame
-pygame.init()
 
-WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+def load_player():
+    img = pygame.image.load("player.png").convert_alpha()
+    img = pygame.transform.smoothscale(img, (img.get_width()*2, img.get_height()*2))
+    rect = img.get_rect()
+    rect.midbottom = (WIDTH // 2, HEIGHT)
+    return img, rect
 
-player_image = pygame.image.load("player.png").convert_alpha()
+def move_player(rect, keys, speed):
+    if keys[pygame.K_LEFT]: rect.x -= speed
+    if keys[pygame.K_RIGHT]: rect.x += speed
+    rect.left = max(rect.left, 0)
+    rect.right = min(rect.right, WIDTH)
 
-original_width, original_height = player_image.get_size()
+def shoot(keys, rect, bullets):
+    if keys[pygame.K_SPACE]:
+        bullets.append([rect.centerx, rect.top])
 
-scale_factor = 2
-new_size = (original_width * scale_factor, original_height * scale_factor)
-player_image = pygame.transform.smoothscale(player_image, new_size)
+def move_bullets(bullets, speed):
+    for b in bullets: b[1] -= speed
+    bullets[:] = [b for b in bullets if b[1] > 0]
 
-player_rect = player_image.get_rect()
-player_rect.midbottom = (WIDTH // 2, HEIGHT)
+def main():
+    pygame.init()
+    global WIDTH, HEIGHT
+    WIDTH, HEIGHT = 800, 600
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    clock = pygame.time.Clock()
+    player_img, player_rect = load_player()
+    bullets = []
+    running = True
 
-clock = pygame.time.Clock()
-running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+        keys = pygame.key.get_pressed()
+        move_player(player_rect, keys, 5)
+        shoot(keys, player_rect, bullets)
+        move_bullets(bullets, 10)
 
-player_speed = 5
+        screen.fill((0,0,0))
+        screen.blit(player_img, player_rect)
+        for b in bullets:
+            pygame.draw.circle(screen, (255,255,255), b, 5)
+        pygame.display.flip()
+        clock.tick(60)
+    pygame.quit()
 
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT]:
-        player_rect.x -= player_speed
-    if keys[pygame.K_RIGHT]:
-        player_rect.x += player_speed
-
-    if player_rect.left < 0:
-        player_rect.left = 0
-    if player_rect.right > WIDTH:
-        player_rect.right = WIDTH
-
-    screen.fill((0, 0, 0))
-    screen.blit(player_image, player_rect)
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+if __name__ == "__main__":
+    main()
