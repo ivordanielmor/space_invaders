@@ -1,6 +1,6 @@
-# 3. Mozgatás balra/jobbra, szélek ellenőrzése
-# Figyeld a balra/jobbra nyilakat! Minden frame-ben frissítsd a sprite
-#  pozícióját, és akadályozd meg, hogy kimenjen a képernyő szélén túl.
+# 4. Kirajzolás a fő ciklusban
+# A sprite-ot minden frame-ben rajzold ki a friss pozícióban. Ezt mindig 
+# a screen.fill után és a display.flip előtt tedd!
 
 import pygame
 pygame.init()
