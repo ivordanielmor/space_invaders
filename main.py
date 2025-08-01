@@ -1,5 +1,6 @@
-# 3. Kirajzolás a fő ciklusban
-# A játék minden frame-jében végigiterálsz az enemies listán, és minden ellenséget a saját rect pozícióján rajzolsz ki!
+# HÁZI FELADAT
+# Változtasd meg az elrendezést: legyen 5 sor és 6 oszlop, nagyobb távolság a sorok között
+# (pl. spacing = 25), más offset (pl. offset_x = 80, offset_y = 30)!
 
 import pygame
 
@@ -7,9 +8,11 @@ import pygame
 WIDTH, HEIGHT = 800, 600
 PLAYER_SPEED = 5
 BULLET_SPEED = 10
-ROWS, COLS = 5, 10
-ENEMY_PADDING = 10
+ROWS, COLS = 5, 6
+ENEMY_PADDING_X = 10
+ENEMY_PADDING_Y = 25
 ENEMY_SCALE = 0.15
+ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
 
 def load_player():
@@ -26,16 +29,14 @@ def load_enemy():
     img = pygame.transform.smoothscale(img, (scaled_width, scaled_height))
     return img
 
-def create_enemy_grid(enemy_img, rows, cols, offset_y, padding=10):
+def create_enemy_grid(enemy_img, rows, cols, offset_x, offset_y, padding_x=10, padding_y=10):
     enemies = []
     enemy_width = enemy_img.get_width()
     enemy_height = enemy_img.get_height()
-    spacing_x = enemy_width + padding
-    spacing_y = enemy_height + padding
+    spacing_x = enemy_width + padding_x
+    spacing_y = enemy_height + padding_y
 
-    total_width = cols * enemy_width + (cols - 1) * padding
-
-    offset_x = (WIDTH - total_width) // 2
+    total_width = cols * enemy_width + (cols - 1) * padding_x
 
     for row in range(rows):
         for col in range(cols):
@@ -75,8 +76,8 @@ def main():
 
     enemies = create_enemy_grid(
         enemy_img, ROWS, COLS,
-        ENEMY_OFFSET_Y,
-        ENEMY_PADDING
+        ENEMY_OFFSET_X, ENEMY_OFFSET_Y,
+        ENEMY_PADDING_X, ENEMY_PADDING_Y
     )
 
     bullets = []
