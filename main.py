@@ -1,7 +1,5 @@
-# 2. Grid (tömbös) elrendezés létrehozása
-# Használj beágyazott for-ciklust, hogy
-# több sort és oszlopot generálj. Minden sprite-hoz számold ki az x/y
-# koordinátát a sor és oszlop alapján, majd adj hozzá egy új rect-et a listához!
+# 3. Kirajzolás a fő ciklusban
+# A játék minden frame-jében végigiterálsz az enemies listán, és minden ellenséget a saját rect pozícióján rajzolsz ki!
 
 import pygame
 
@@ -10,10 +8,9 @@ WIDTH, HEIGHT = 800, 600
 PLAYER_SPEED = 5
 BULLET_SPEED = 10
 ROWS, COLS = 5, 10
-ENEMY_SPACING_X = 60
-ENEMY_SPACING_Y = 50
-ENEMY_OFFSET_X = 100
-ENEMY_OFFSET_Y = 50
+ENEMY_PADDING = 10
+ENEMY_SCALE = 0.15
+ENEMY_OFFSET_Y = 30
 
 def load_player():
     img = pygame.image.load("player.png").convert_alpha()
@@ -24,11 +21,22 @@ def load_player():
 
 def load_enemy():
     img = pygame.image.load("enemy_spinvaders.png").convert_alpha()
-    img = pygame.transform.smoothscale(img, (img.get_width() * 2, img.get_height() * 2))
+    scaled_width = int(img.get_width() * ENEMY_SCALE)
+    scaled_height = int(img.get_height() * ENEMY_SCALE)
+    img = pygame.transform.smoothscale(img, (scaled_width, scaled_height))
     return img
 
-def create_enemy_grid(enemy_img, rows, cols, spacing_x, spacing_y, offset_x, offset_y):
+def create_enemy_grid(enemy_img, rows, cols, offset_y, padding=10):
     enemies = []
+    enemy_width = enemy_img.get_width()
+    enemy_height = enemy_img.get_height()
+    spacing_x = enemy_width + padding
+    spacing_y = enemy_height + padding
+
+    total_width = cols * enemy_width + (cols - 1) * padding
+
+    offset_x = (WIDTH - total_width) // 2
+
     for row in range(rows):
         for col in range(cols):
             rect = enemy_img.get_rect()
@@ -59,7 +67,7 @@ def move_bullets(bullets, speed):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Space Invaders - 2. feladat (csak grid)")
+    pygame.display.set_caption("Space Invaders - 3. feladat (javított)")
     clock = pygame.time.Clock()
 
     player_img, player_rect = load_player()
@@ -67,8 +75,8 @@ def main():
 
     enemies = create_enemy_grid(
         enemy_img, ROWS, COLS,
-        ENEMY_SPACING_X, ENEMY_SPACING_Y,
-        ENEMY_OFFSET_X, ENEMY_OFFSET_Y
+        ENEMY_OFFSET_Y,
+        ENEMY_PADDING
     )
 
     bullets = []
@@ -86,8 +94,12 @@ def main():
 
         screen.fill((0, 0, 0))
         screen.blit(player_img, player_rect)
+
         for b in bullets:
             pygame.draw.circle(screen, (255, 255, 255), b, 5)
+
+        for enemy_rect in enemies:
+            screen.blit(enemy_img, enemy_rect)
 
         pygame.display.flip()
         clock.tick(60)
