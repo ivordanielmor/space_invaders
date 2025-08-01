@@ -1,6 +1,6 @@
-# HÁZI FELADAT
-# Adj a játékosnak lövés-lehetőséget: amikor a Space billentyűt lenyomod,
-# jelenjen meg egy fehér pont (pl. pygame.draw.circle) a sprite tetején!
+# 1. Ellenség sprite betöltése és lista létrehozása
+# Először töltsd be az ellenség sprite-ot (enemy.png), majd hozz létre egy
+# üres listát az ellenségek helyzetének tárolására!
 
 import pygame
 
@@ -10,6 +10,11 @@ def load_player():
     rect = img.get_rect()
     rect.midbottom = (WIDTH // 2, HEIGHT)
     return img, rect
+
+def load_enemy():
+    img = pygame.image.load("enemy_spinvaders.png").convert_alpha()
+    img = pygame.transform.smoothscale(img, (img.get_width()*2, img.get_height()*2))
+    return img
 
 def move_player(rect, keys, speed):
     if keys[pygame.K_LEFT]: rect.x -= speed
@@ -31,7 +36,13 @@ def main():
     WIDTH, HEIGHT = 800, 600
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     clock = pygame.time.Clock()
+
     player_img, player_rect = load_player()
+
+    enemy_img = load_enemy()
+
+    enemies = []
+
     bullets = []
     running = True
 
@@ -39,17 +50,20 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
         keys = pygame.key.get_pressed()
         move_player(player_rect, keys, 5)
         shoot(keys, player_rect, bullets)
         move_bullets(bullets, 10)
 
-        screen.fill((0,0,0))
+        screen.fill((0, 0, 0))
         screen.blit(player_img, player_rect)
         for b in bullets:
-            pygame.draw.circle(screen, (255,255,255), b, 5)
+            pygame.draw.circle(screen, (255, 255, 255), b, 5)
+
         pygame.display.flip()
         clock.tick(60)
+
     pygame.quit()
 
 if __name__ == "__main__":
