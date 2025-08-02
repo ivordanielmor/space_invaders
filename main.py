@@ -1,5 +1,6 @@
-# 2. Pozíciófrissítés minden frame-ben
-# Minden ciklusban végig kell menni az enemies listán, és mindegyik rect.x értékét növelni dx-szel. Így egyszerre mozognak.
+# 3. Széldetektálás és irányváltás, süllyedés
+# Ha bármelyik ellenség eléri a bal vagy jobb szélt, az egész flotta visszafordul
+# (dx = -dx), és minden ellenség y koordinátáját növeled (azaz lejjebb süllyednek).
 
 import pygame
 
@@ -95,8 +96,16 @@ def main():
         shoot(keys, player_rect, bullets)
         move_bullets(bullets, BULLET_SPEED)
 
+        move_down = False
         for enemy in enemies:
             enemy.x += dx
+            if enemy.right >= WIDTH or enemy.left <= 0:
+                move_down = True
+
+        if move_down:
+            dx *= -1
+            for enemy in enemies:
+                enemy.y += descent
 
         screen.fill((0, 0, 0))
         screen.blit(player_img, player_rect)
