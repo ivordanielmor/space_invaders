@@ -1,6 +1,5 @@
-# 3. Széldetektálás és irányváltás, süllyedés
-# Ha bármelyik ellenség eléri a bal vagy jobb szélt, az egész flotta visszafordul
-# (dx = -dx), és minden ellenség y koordinátáját növeled (azaz lejjebb süllyednek).
+# 4. Kirajzolás (ismétlés)
+# Töröld a képernyőt, majd rajzold ki az összes ellenséget az új pozíciókon, végül a játékos sprite-ot!
 
 import pygame
 
@@ -108,13 +107,14 @@ def main():
                 enemy.y += descent
 
         screen.fill((0, 0, 0))
-        screen.blit(player_img, player_rect)
 
         for b in bullets:
             pygame.draw.circle(screen, (255, 255, 255), b, 5)
 
         for enemy_rect in enemies:
             screen.blit(enemy_img, enemy_rect)
+
+        screen.blit(player_img, player_rect)
 
         pygame.display.flip()
         clock.tick(60)
