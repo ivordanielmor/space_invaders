@@ -1,5 +1,5 @@
-# 1. Sebességváltozók definiálása
-# Először állíts be két változót: dx (horizontális mozgás) és descent (süllyedés mértéke, amikor a flotta lejjebb megy).
+# 2. Pozíciófrissítés minden frame-ben
+# Minden ciklusban végig kell menni az enemies listán, és mindegyik rect.x értékét növelni dx-szel. Így egyszerre mozognak.
 
 import pygame
 
@@ -80,7 +80,6 @@ def main():
     )
 
     bullets = []
-
     dx = 2
     descent = 20
 
@@ -95,6 +94,9 @@ def main():
         move_player(player_rect, keys, PLAYER_SPEED)
         shoot(keys, player_rect, bullets)
         move_bullets(bullets, BULLET_SPEED)
+
+        for enemy in enemies:
+            enemy.x += dx
 
         screen.fill((0, 0, 0))
         screen.blit(player_img, player_rect)
