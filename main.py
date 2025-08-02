@@ -1,5 +1,5 @@
-# 4. Kirajzolás (ismétlés)
-# Töröld a képernyőt, majd rajzold ki az összes ellenséget az új pozíciókon, végül a játékos sprite-ot!
+# HÁZI FELADAT
+# Növeld a dx értékét minden süllyedés után (pl. dx *= 1.1), és figyeld meg, hogyan gyorsul a mozgás!
 
 import pygame
 
@@ -34,8 +34,6 @@ def create_enemy_grid(enemy_img, rows, cols, offset_x, offset_y, padding_x=10, p
     enemy_height = enemy_img.get_height()
     spacing_x = enemy_width + padding_x
     spacing_y = enemy_height + padding_y
-
-    total_width = cols * enemy_width + (cols - 1) * padding_x
 
     for row in range(rows):
         for col in range(cols):
@@ -102,7 +100,7 @@ def main():
                 move_down = True
 
         if move_down:
-            dx *= -1
+            dx *= -1.1
             for enemy in enemies:
                 enemy.y += descent
 
