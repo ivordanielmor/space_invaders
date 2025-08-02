@@ -1,6 +1,5 @@
-# HÁZI FELADAT
-# Változtasd meg az elrendezést: legyen 5 sor és 6 oszlop, nagyobb távolság a sorok között
-# (pl. spacing = 25), más offset (pl. offset_x = 80, offset_y = 30)!
+# 1. Sebességváltozók definiálása
+# Először állíts be két változót: dx (horizontális mozgás) és descent (süllyedés mértéke, amikor a flotta lejjebb megy).
 
 import pygame
 
@@ -68,7 +67,7 @@ def move_bullets(bullets, speed):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Space Invaders - 3. feladat (javított)")
+    pygame.display.set_caption("Space Invaders")
     clock = pygame.time.Clock()
 
     player_img, player_rect = load_player()
@@ -81,6 +80,10 @@ def main():
     )
 
     bullets = []
+
+    dx = 2
+    descent = 20
+
     running = True
 
     while running:
