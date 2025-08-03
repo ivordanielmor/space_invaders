@@ -1,8 +1,8 @@
-# 1. Rács-pozíciók létrehozása
-# Állíts elő egy listát, ami minden lehetséges ellenség-pozíciót tartalmaz.
-# Legyen például 5 oszlop és 4 sor, fix (x, y) rácspontokkal!
+# 2. Véletlenszerű ellenség-elhelyezés
+# Válassz ki minden játékindításkor 8 random pozíciót, és hozz létre ellenség-sprite-okat ezekhez.
 
 import pygame
+import random
 
 # Általános beállítások
 WIDTH, HEIGHT = 800, 600
@@ -14,6 +14,7 @@ ENEMY_PADDING_Y = 25
 ENEMY_SCALE = 0.15
 ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
+ENEMY_COUNT = 8
 
 def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
     positions = []
@@ -66,15 +67,18 @@ def main():
     enemy_width = enemy_img.get_width()
     enemy_height = enemy_img.get_height()
 
-    enemy_positions = generate_enemy_positions(
+    all_positions = generate_enemy_positions(
         ROWS, COLS,
         ENEMY_OFFSET_X, ENEMY_OFFSET_Y,
         ENEMY_PADDING_X, ENEMY_PADDING_Y,
         enemy_width, enemy_height
     )
 
+    selected_positions = random.sample(all_positions, ENEMY_COUNT) # random.sample: Kiválaszt k darab egyedi, véletlenszerű elemet egy
+    # megadott listából (vagy más iterálható objektumból).
+
     enemies = []
-    for pos in enemy_positions:
+    for pos in selected_positions:
         rect = enemy_img.get_rect(topleft=pos)
         enemies.append(rect)
 
