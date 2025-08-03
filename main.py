@@ -1,5 +1,6 @@
-# HÁZI FELADAT
-# Növeld a dx értékét minden süllyedés után (pl. dx *= 1.1), és figyeld meg, hogyan gyorsul a mozgás!
+# 1. Rács-pozíciók létrehozása
+# Állíts elő egy listát, ami minden lehetséges ellenség-pozíciót tartalmaz.
+# Legyen például 5 oszlop és 4 sor, fix (x, y) rácspontokkal!
 
 import pygame
 
@@ -7,12 +8,21 @@ import pygame
 WIDTH, HEIGHT = 800, 600
 PLAYER_SPEED = 5
 BULLET_SPEED = 10
-ROWS, COLS = 5, 6
+ROWS, COLS = 4, 5
 ENEMY_PADDING_X = 10
 ENEMY_PADDING_Y = 25
 ENEMY_SCALE = 0.15
 ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
+
+def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
+    positions = []
+    for row in range(rows):
+        for col in range(cols):
+            x = offset_x + col * (enemy_width + padding_x)
+            y = offset_y + row * (enemy_height + padding_y)
+            positions.append((x, y))
+    return positions
 
 def load_player():
     img = pygame.image.load("player.png").convert_alpha()
@@ -27,23 +37,6 @@ def load_enemy():
     scaled_height = int(img.get_height() * ENEMY_SCALE)
     img = pygame.transform.smoothscale(img, (scaled_width, scaled_height))
     return img
-
-def create_enemy_grid(enemy_img, rows, cols, offset_x, offset_y, padding_x=10, padding_y=10):
-    enemies = []
-    enemy_width = enemy_img.get_width()
-    enemy_height = enemy_img.get_height()
-    spacing_x = enemy_width + padding_x
-    spacing_y = enemy_height + padding_y
-
-    for row in range(rows):
-        for col in range(cols):
-            rect = enemy_img.get_rect()
-            rect.topleft = (
-                offset_x + col * spacing_x,
-                offset_y + row * spacing_y
-            )
-            enemies.append(rect)
-    return enemies
 
 def move_player(rect, keys, speed):
     if keys[pygame.K_LEFT]:
@@ -70,12 +63,20 @@ def main():
 
     player_img, player_rect = load_player()
     enemy_img = load_enemy()
+    enemy_width = enemy_img.get_width()
+    enemy_height = enemy_img.get_height()
 
-    enemies = create_enemy_grid(
-        enemy_img, ROWS, COLS,
+    enemy_positions = generate_enemy_positions(
+        ROWS, COLS,
         ENEMY_OFFSET_X, ENEMY_OFFSET_Y,
-        ENEMY_PADDING_X, ENEMY_PADDING_Y
+        ENEMY_PADDING_X, ENEMY_PADDING_Y,
+        enemy_width, enemy_height
     )
+
+    enemies = []
+    for pos in enemy_positions:
+        rect = enemy_img.get_rect(topleft=pos)
+        enemies.append(rect)
 
     bullets = []
     dx = 2
