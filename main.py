@@ -1,5 +1,6 @@
-# 3. Ellenségek kirajzolása egyedi színnel
-# Most a sprite helyett csak egy négyzetet rajzolunk (pygame.draw.rect), mindenki a saját színével.
+# HÁZI FELADAT
+# Bővítsd az ellenség-objektumot egy size tulajdonsággal (random.randint(20, 40)),
+# és rajzold ki a négyzetet ennek megfelelő mérettel (pygame.Rect(enemy.x, enemy.y, size, size)).
 
 import pygame
 import random
@@ -11,7 +12,6 @@ BULLET_SPEED = 10
 ROWS, COLS = 4, 5
 ENEMY_PADDING_X = 10
 ENEMY_PADDING_Y = 25
-ENEMY_SCALE = 0.15
 ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
 ENEMY_START_COUNT = 8
@@ -34,18 +34,12 @@ def load_player():
 
 def load_enemy():
     img = pygame.image.load("enemy_spinvaders.png").convert_alpha()
-    scaled_width = int(img.get_width() * ENEMY_SCALE)
-    scaled_height = int(img.get_height() * ENEMY_SCALE)
-    img = pygame.transform.smoothscale(img, (scaled_width, scaled_height))
     return img
 
 def tint_image(image, tint_color):
-    """Színez egy képet úgy, hogy a sprite részletei megmaradnak."""
     tinted_image = image.copy()
-    tinted_image.fill((0, 0, 0, 0))
-    w, h = image.get_size()
-    for x in range(w):
-        for y in range(h):
+    for x in range(image.get_width()):
+        for y in range(image.get_height()):
             pixel = image.get_at((x, y))
             if pixel.a != 0:
                 tinted_image.set_at((x, y), pygame.Color(
@@ -69,20 +63,22 @@ def create_enemies(enemy_img, all_positions, count):
     random.shuffle(all_positions)
     enemies = []
     for pos in all_positions[:count]:
-        rect = enemy_img.get_rect(topleft=pos)
+        size = random.randint(20, 40)
+        scaled_img = pygame.transform.smoothscale(enemy_img, (size, size))
 
         color = (
             random.randint(50, 255),
             random.randint(50, 255),
             random.randint(50, 255)
         )
-
-        tinted_img = tint_image(enemy_img, color)
+        tinted_img = tint_image(scaled_img, color)
+        rect = tinted_img.get_rect(topleft=pos)
 
         enemy = {
             "rect": rect,
             "speed": random.uniform(1.0, 2.0),
-            "image": tinted_img
+            "image": tinted_img,
+            "size": size
         }
         enemies.append(enemy)
     return enemies
@@ -160,7 +156,7 @@ def main():
         ROWS, COLS,
         ENEMY_OFFSET_X, ENEMY_OFFSET_Y,
         ENEMY_PADDING_X, ENEMY_PADDING_Y,
-        enemy_img.get_width(), enemy_img.get_height()
+        20, 20
     )
 
     level_data = {
