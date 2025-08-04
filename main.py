@@ -1,6 +1,5 @@
-# 1. Ellenségek tulajdonságainak hozzárendelése
-# Módosítsd az enemies listát úgy, hogy minden elem egy dict legyen
-# (ne csak egy rect), és adj hozzá véletlenszerű sebességet és színt is!
+# 2. Egyedi sebességek használata mozgáshoz
+# Frissítsd az összes ellenség x koordinátáját a saját sebességével, így mindenki máshogy mozog!
 
 import pygame
 import random
@@ -65,13 +64,12 @@ def create_enemies(enemy_img, all_positions, count):
     enemies = []
     for pos in selected:
         rect = enemy_img.get_rect(topleft=pos)
-
         enemy = {
-            "rect": rect,
-            "speed": 2,
-            "color": (255, 255, 255),
-            "image": enemy_img
-        }
+    "rect": rect,
+    "speed": random.uniform(1.0, 2.0),
+    "color": (255, 255, 255),
+    "image": enemy_img
+}
         enemies.append(enemy)
     return enemies
 
@@ -178,6 +176,7 @@ def main():
         clock.tick(60)
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()
