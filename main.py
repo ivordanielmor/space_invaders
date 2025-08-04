@@ -1,7 +1,7 @@
-# HÁZI FELADAT
-# Bővítsd úgy a kódot, hogy minden pályán más számú ellenség
-# jelenjen meg (pl. első indításkor 8, másodiknál 10), és random.sample() helyett random.shuffle()-lel
-# keverd meg a listát, majd az első N elemet használd.
+# 1. Ellenségek tulajdonságainak hozzárendelése
+# Módosítsd az enemies listát úgy, hogy minden elem egy dict legyen
+# (ne csak egy rect), és adj hozzá véletlenszerű sebességet és színt is!
+
 import pygame
 import random
 
@@ -65,7 +65,14 @@ def create_enemies(enemy_img, all_positions, count):
     enemies = []
     for pos in selected:
         rect = enemy_img.get_rect(topleft=pos)
-        enemies.append(rect)
+
+        enemy = {
+            "rect": rect,
+            "speed": 2,
+            "color": (255, 255, 255),
+            "image": enemy_img
+        }
+        enemies.append(enemy)
     return enemies
 
 
@@ -88,7 +95,7 @@ def update_game_state(keys, player_rect, bullets, enemies, enemy_img, all_positi
 
     for bullet in bullets[:]:
         for enemy in enemies[:]:
-            if enemy.collidepoint(bullet):
+            if enemy["rect"].collidepoint(bullet):
                 bullets.remove(bullet)
                 enemies.remove(enemy)
                 break
@@ -104,24 +111,24 @@ def update_game_state(keys, player_rect, bullets, enemies, enemy_img, all_positi
 
     move_down = False
     for enemy in enemies:
-        enemy.x += level_data["dx"]
-        if enemy.right >= WIDTH or enemy.left <= 0:
+        enemy["rect"].x += int(level_data["dx"] * enemy["speed"])
+        if enemy["rect"].right >= WIDTH or enemy["rect"].left <= 0:
             move_down = True
 
     if move_down:
         level_data["dx"] *= -1.1
         for enemy in enemies:
-            enemy.y += level_data["descent"]
+            enemy["rect"].y += level_data["descent"]
 
 
-def draw_game(screen, player_img, player_rect, enemy_img, enemies, bullets, level):
+def draw_game(screen, player_img, player_rect, enemies, bullets, level):
     screen.fill((0, 0, 0))
 
     for b in bullets:
         pygame.draw.circle(screen, (255, 255, 255), b, 5)
 
-    for enemy_rect in enemies:
-        screen.blit(enemy_img, enemy_rect)
+    for enemy in enemies:
+        screen.blit(enemy["image"], enemy["rect"])
 
     screen.blit(player_img, player_rect)
 
@@ -167,11 +174,10 @@ def main():
         running = handle_events()
         keys = pygame.key.get_pressed()
         update_game_state(keys, player_rect, bullets, enemies, enemy_img, all_positions, level_data)
-        draw_game(screen, player_img, player_rect, enemy_img, enemies, bullets, level_data["level"])
+        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"])
         clock.tick(60)
 
     pygame.quit()
-
 
 if __name__ == "__main__":
     main()
