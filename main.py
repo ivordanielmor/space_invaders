@@ -1,6 +1,5 @@
-# 2. Életvesztés – Game Over logika
-# Ha az ellenség eltalálja a játékost, vagy más hiba történik, csökkentsd a lives értékét.
-# Ellenőrizd, hogy elfogytak-e az életek, és ha igen, állítsd le a játékot!
+# 3. Életek megjelenítése a képernyőn
+# Minden frame-ben jelenítsd meg a bal felső sarokban, hány élet maradt!
 
 import pygame
 import random
@@ -139,7 +138,7 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
     game_over = lives <= 0
     return lives, game_over
 
-def draw_game(screen, player_img, player_rect, enemies, bullets, level):
+def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives):
     screen.fill((0, 0, 0))
 
     for b in bullets:
@@ -153,6 +152,9 @@ def draw_game(screen, player_img, player_rect, enemies, bullets, level):
     font = pygame.font.SysFont(None, 36)
     level_text = font.render(f"Level {level}", True, (255, 255, 255))
     screen.blit(level_text, (10, 10))
+
+    lives_text = font.render(f"Lives: {lives}", True, (255, 255, 255))
+    screen.blit(lives_text, (10, 50))
 
     pygame.display.flip()
 
@@ -194,7 +196,7 @@ def main():
         if game_over:
             print("Game Over!")
             running = False
-        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"])
+        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives)
         clock.tick(60)
 
     pygame.quit()
