@@ -1,5 +1,6 @@
-# 3. Életek megjelenítése a képernyőn
-# Minden frame-ben jelenítsd meg a bal felső sarokban, hány élet maradt!
+# HÁZI FELADAT
+# Használj kis képeket ("szívet") az életek helyett: tölts be egy heart.png-et, és for i 
+# in range(lives): screen.blit(heart_img, (10 + i*34, 10)) segítségével rajzolj ki életeket!
 
 import pygame
 import random
@@ -89,6 +90,16 @@ def handle_events():
             return False
     return True
 
+def reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False):
+    if not same_level:
+        level_data["level"] += 1
+        level_data["enemy_count"] = ENEMY_START_COUNT + (level_data["level"] - 1) * 2
+    max_enemies = min(level_data["enemy_count"], ROWS * COLS)
+    enemies[:] = create_enemies(level_data["enemy_img"], all_positions.copy(), max_enemies)
+    bullets.clear()
+    player_rect.midbottom = (WIDTH // 2, HEIGHT)
+    level_data["dx"] = 2
+
 def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives):
     current_time = pygame.time.get_ticks()
     move_player(player_rect, keys, PLAYER_SPEED)
@@ -106,39 +117,31 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
                 enemies.remove(enemy)
                 break
 
-    if not enemies:
-        level_data["level"] += 1
-        level_data["enemy_count"] = ENEMY_START_COUNT + (level_data["level"] - 1) * 2
-        max_enemies = min(level_data["enemy_count"], ROWS * COLS)
-        enemies[:] = create_enemies(level_data["enemy_img"], all_positions.copy(), max_enemies)
-        bullets.clear()
-        player_rect.midbottom = (WIDTH // 2, HEIGHT)
-        level_data["dx"] = 2
+    player_died = False
 
-    move_down = False
     for enemy in enemies:
         enemy["rect"].x += int(level_data["dx"] * enemy["speed"])
         if enemy["rect"].right >= WIDTH or enemy["rect"].left <= 0:
-            move_down = True
-
-    if move_down:
-        level_data["dx"] *= -1.1
-        for enemy in enemies:
-            enemy["rect"].y += level_data["descent"]
+            for e in enemies:
+                e["rect"].y += level_data["descent"]
+            level_data["dx"] *= -1.1
+            break
 
     for enemy in enemies:
         if enemy["rect"].colliderect(player_rect):
             lives -= 1
-            enemies.clear()
-            bullets.clear()
-            player_rect.midbottom = (WIDTH // 2, HEIGHT)
-            level_data["dx"] = 2
+            player_died = True
             break
+
+    if player_died:
+        reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
+    elif not enemies:
+        reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False)
 
     game_over = lives <= 0
     return lives, game_over
 
-def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives):
+def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, heart_img):
     screen.fill((0, 0, 0))
 
     for b in bullets:
@@ -153,8 +156,8 @@ def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives):
     level_text = font.render(f"Level {level}", True, (255, 255, 255))
     screen.blit(level_text, (10, 10))
 
-    lives_text = font.render(f"Lives: {lives}", True, (255, 255, 255))
-    screen.blit(lives_text, (10, 50))
+    for i in range(lives):
+        screen.blit(heart_img, (10 + i * 34, 50))
 
     pygame.display.flip()
 
@@ -166,6 +169,8 @@ def main():
 
     player_img, player_rect = load_player()
     enemy_img = load_enemy()
+    heart_img = pygame.image.load("heart.png").convert_alpha()
+    heart_img = pygame.transform.smoothscale(heart_img, (32, 32))
 
     all_positions = generate_enemy_positions(
         ROWS, COLS,
@@ -196,7 +201,7 @@ def main():
         if game_over:
             print("Game Over!")
             running = False
-        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives)
+        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img)
         clock.tick(60)
 
     pygame.quit()
