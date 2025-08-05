@@ -1,5 +1,6 @@
-# 1. Életek inicializálása
-# A játék elején hozz létre egy lives = 3 változót, amit majd a játék során csökkentünk.
+# 2. Életvesztés – Game Over logika
+# Ha az ellenség eltalálja a játékost, vagy más hiba történik, csökkentsd a lives értékét.
+# Ellenőrizd, hogy elfogytak-e az életek, és ha igen, állítsd le a játékot!
 
 import pygame
 import random
@@ -89,7 +90,7 @@ def handle_events():
             return False
     return True
 
-def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data):
+def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives):
     current_time = pygame.time.get_ticks()
     move_player(player_rect, keys, PLAYER_SPEED)
 
@@ -125,6 +126,18 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
         level_data["dx"] *= -1.1
         for enemy in enemies:
             enemy["rect"].y += level_data["descent"]
+
+    for enemy in enemies:
+        if enemy["rect"].colliderect(player_rect):
+            lives -= 1
+            enemies.clear()
+            bullets.clear()
+            player_rect.midbottom = (WIDTH // 2, HEIGHT)
+            level_data["dx"] = 2
+            break
+
+    game_over = lives <= 0
+    return lives, game_over
 
 def draw_game(screen, player_img, player_rect, enemies, bullets, level):
     screen.fill((0, 0, 0))
@@ -171,12 +184,16 @@ def main():
 
     enemies = create_enemies(enemy_img, all_positions.copy(), level_data["enemy_count"])
     bullets = []
+    lives = LIVES
 
     running = True
     while running:
         running = handle_events()
         keys = pygame.key.get_pressed()
-        update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data)
+        lives, game_over = update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives)
+        if game_over:
+            print("Game Over!")
+            running = False
         draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"])
         clock.tick(60)
 
