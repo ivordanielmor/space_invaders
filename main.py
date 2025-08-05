@@ -1,6 +1,5 @@
-# HÁZI FELADAT
-# Bővítsd az ellenség-objektumot egy size tulajdonsággal (random.randint(20, 40)),
-# és rajzold ki a négyzetet ennek megfelelő mérettel (pygame.Rect(enemy.x, enemy.y, size, size)).
+# 1. Életek inicializálása
+# A játék elején hozz létre egy lives = 3 változót, amit majd a játék során csökkentünk.
 
 import pygame
 import random
@@ -15,6 +14,7 @@ ENEMY_PADDING_Y = 25
 ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
 ENEMY_START_COUNT = 8
+LIVES = 3
 
 def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
     positions = []
