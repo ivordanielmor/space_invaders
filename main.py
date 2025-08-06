@@ -1,5 +1,5 @@
-# 2. Pontnövelés ellenség leverésekor
-# Ha eltalálsz (vagy eltüntetsz) egy ellenséget, növeld a pontszámot!
+# 3. Pontszám megjelenítése a képernyőn
+# A fő ciklusban, minden frame-ben jelenítsd meg a pontszámot a jobb felső sarokban!
 
 import pygame
 import random
@@ -155,6 +155,9 @@ def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, h
     font = pygame.font.SysFont(None, 36)
     level_text = font.render(f"Level {level}", True, (255, 255, 255))
     screen.blit(level_text, (10, 10))
+
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+    screen.blit(score_text, (WIDTH - score_text.get_width() - 10, 10))
 
     for i in range(lives):
         screen.blit(heart_img, (10 + i * 34, 50))
