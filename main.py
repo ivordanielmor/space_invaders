@@ -1,5 +1,5 @@
-# 1. Pontszám inicializálása
-# A játék indításakor hozz létre egy score = 0 változót.
+# 2. Pontnövelés ellenség leverésekor
+# Ha eltalálsz (vagy eltüntetsz) egy ellenséget, növeld a pontszámot!
 
 import pygame
 import random
@@ -15,7 +15,6 @@ ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
 ENEMY_START_COUNT = 8
 LIVES = 3
-SCORE = 0
 
 def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
     positions = []
@@ -100,7 +99,7 @@ def reset_level(player_rect, bullets, enemies, all_positions, level_data, same_l
     player_rect.midbottom = (WIDTH // 2, HEIGHT)
     level_data["dx"] = 2
 
-def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives):
+def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives, score):
     current_time = pygame.time.get_ticks()
     move_player(player_rect, keys, PLAYER_SPEED)
 
@@ -115,6 +114,7 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
             if enemy["rect"].collidepoint(bullet):
                 bullets.remove(bullet)
                 enemies.remove(enemy)
+                score += 10
                 break
 
     player_died = False
@@ -139,9 +139,9 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
         reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False)
 
     game_over = lives <= 0
-    return lives, game_over
+    return lives, game_over, score
 
-def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, heart_img):
+def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, heart_img, score):
     screen.fill((0, 0, 0))
 
     for b in bullets:
@@ -192,16 +192,20 @@ def main():
     enemies = create_enemies(enemy_img, all_positions.copy(), level_data["enemy_count"])
     bullets = []
     lives = LIVES
+    score = 0
 
     running = True
     while running:
         running = handle_events()
         keys = pygame.key.get_pressed()
-        lives, game_over = update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives)
+        lives, game_over, score = update_game_state(
+            keys, player_rect, bullets, enemies, all_positions, level_data, lives, score)
+
         if game_over:
             print("Game Over!")
             running = False
-        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img)
+
+        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img, score)
         clock.tick(60)
 
     pygame.quit()
