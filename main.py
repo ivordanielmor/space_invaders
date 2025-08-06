@@ -1,6 +1,5 @@
-# HÁZI FELADAT
-# Használj kis képeket ("szívet") az életek helyett: tölts be egy heart.png-et, és for i 
-# in range(lives): screen.blit(heart_img, (10 + i*34, 10)) segítségével rajzolj ki életeket!
+# 1. Pontszám inicializálása
+# A játék indításakor hozz létre egy score = 0 változót.
 
 import pygame
 import random
@@ -16,6 +15,7 @@ ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
 ENEMY_START_COUNT = 8
 LIVES = 3
+SCORE = 0
 
 def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
     positions = []
