@@ -1,5 +1,6 @@
-# 3. Pontszám megjelenítése a képernyőn
-# A fő ciklusban, minden frame-ben jelenítsd meg a pontszámot a jobb felső sarokban!
+# HÁZI FELADAT
+# Adj pontot extra bónuszért: ha több ellenség közelében ütöd ki az egyiket
+# (combo), adj dupla score-t (score += 20).
 
 import pygame
 import random
@@ -15,6 +16,7 @@ ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
 ENEMY_START_COUNT = 8
 LIVES = 3
+COMBO_RADIUS = 50
 
 def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
     positions = []
@@ -113,8 +115,23 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
         for enemy in enemies[:]:
             if enemy["rect"].collidepoint(bullet):
                 bullets.remove(bullet)
+
+                nearby_count = 0
+                ex, ey = enemy["rect"].center
+                for other in enemies:
+                    if other is enemy:
+                        continue
+                    ox, oy = other["rect"].center
+                    dist = ((ex - ox) ** 2 + (ey - oy) ** 2) ** 0.5
+                    if dist <= COMBO_RADIUS:
+                        nearby_count += 1
+
+                if nearby_count > 0:
+                    score += 20
+                else:
+                    score += 10
+
                 enemies.remove(enemy)
-                score += 10
                 break
 
     player_died = False
