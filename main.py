@@ -1,6 +1,7 @@
-# HÁZI FELADAT
-# Adj pontot extra bónuszért: ha több ellenség közelében ütöd ki az egyiket
-# (combo), adj dupla score-t (score += 20).
+# 1. Game Over állapot detektálása
+# A játékban ellenőrizd, hogy elfogytak-e az életek (lives <= 0)
+# vagy minden ellenséget legyőztél (len(enemies) == 0). Ha igen, állítsd
+# a running változót False-ra, hogy kilépj a fő ciklusból.
 
 import pygame
 import random
@@ -155,7 +156,7 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
     elif not enemies:
         reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False)
 
-    game_over = lives <= 0
+    game_over = lives <= 0 or len(enemies) == 0
     return lives, game_over, score
 
 def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, heart_img, score):
@@ -222,7 +223,6 @@ def main():
             keys, player_rect, bullets, enemies, all_positions, level_data, lives, score)
 
         if game_over:
-            print("Game Over!")
             running = False
 
         draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img, score)
