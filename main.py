@@ -1,8 +1,10 @@
-# 2. Game Over képernyő megjelenítése
-# Készíts két betűtípust (big_font és font), majd jelenítsd meg a feliratokat a képernyő közepén!
+# HÁZI FELADAT
+# Tegyél be egy „Kilépés” opciót is: ha az ESC
+# billentyűt nyomod, teljesen zárja be a játékot (pygame.quit() + sys.exit()).
 
 import pygame
 import random
+import sys
 
 # Általános beállítások
 WIDTH, HEIGHT = 800, 600
@@ -87,7 +89,11 @@ def create_enemies(enemy_img, all_positions, count):
 def handle_events():
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            return False
+            pygame.quit()
+            sys.exit()
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            pygame.quit()
+            sys.exit()
     return True
 
 def reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False):
@@ -187,9 +193,11 @@ def draw_game_over(screen):
 
     text1 = big_font.render("GAME OVER", True, (255, 0, 0))
     text2 = font.render("Nyomj ENTER-t az újrakezdéshez", True, (255, 255, 255))
+    text3 = font.render("Kilépéshez nyomj ESC-t", True, (200, 200, 200))
 
-    screen.blit(text1, ((WIDTH - text1.get_width()) // 2, HEIGHT // 2 - 60))
+    screen.blit(text1, ((WIDTH - text1.get_width()) // 2, HEIGHT // 2 - 80))
     screen.blit(text2, ((WIDTH - text2.get_width()) // 2, HEIGHT // 2 + 10))
+    screen.blit(text3, ((WIDTH - text3.get_width()) // 2, HEIGHT // 2 + 50))
 
     pygame.display.flip()
 
@@ -245,9 +253,13 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
-                    return
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                    waiting = False
+                    sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        waiting = False
+                    elif event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
 
 if __name__ == "__main__":
     main()
