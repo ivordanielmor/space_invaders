@@ -1,7 +1,5 @@
-# 1. Game Over állapot detektálása
-# A játékban ellenőrizd, hogy elfogytak-e az életek (lives <= 0)
-# vagy minden ellenséget legyőztél (len(enemies) == 0). Ha igen, állítsd
-# a running változót False-ra, hogy kilépj a fő ciklusból.
+# 2. Game Over képernyő megjelenítése
+# Készíts két betűtípust (big_font és font), majd jelenítsd meg a feliratokat a képernyő közepén!
 
 import pygame
 import random
@@ -182,53 +180,74 @@ def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, h
 
     pygame.display.flip()
 
+def draw_game_over(screen):
+    screen.fill((0, 0, 0))
+    big_font = pygame.font.SysFont(None, 72)
+    font = pygame.font.SysFont(None, 36)
+
+    text1 = big_font.render("GAME OVER", True, (255, 0, 0))
+    text2 = font.render("Nyomj ENTER-t az újrakezdéshez", True, (255, 255, 255))
+
+    screen.blit(text1, ((WIDTH - text1.get_width()) // 2, HEIGHT // 2 - 60))
+    screen.blit(text2, ((WIDTH - text2.get_width()) // 2, HEIGHT // 2 + 10))
+
+    pygame.display.flip()
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Space Invaders")
     clock = pygame.time.Clock()
 
-    player_img, player_rect = load_player()
-    enemy_img = load_enemy()
     heart_img = pygame.image.load("heart.png").convert_alpha()
     heart_img = pygame.transform.smoothscale(heart_img, (32, 32))
 
-    all_positions = generate_enemy_positions(
-        ROWS, COLS,
-        ENEMY_OFFSET_X, ENEMY_OFFSET_Y,
-        ENEMY_PADDING_X, ENEMY_PADDING_Y,
-        20, 20
-    )
+    while True:
+        player_img, player_rect = load_player()
+        enemy_img = load_enemy()
+        all_positions = generate_enemy_positions(
+            ROWS, COLS,
+            ENEMY_OFFSET_X, ENEMY_OFFSET_Y,
+            ENEMY_PADDING_X, ENEMY_PADDING_Y,
+            20, 20
+        )
+        level_data = {
+            "level": 1,
+            "enemy_count": ENEMY_START_COUNT,
+            "last_shot_time": 0,
+            "shoot_delay": 1000,
+            "dx": 2,
+            "descent": 20,
+            "enemy_img": enemy_img
+        }
+        enemies = create_enemies(enemy_img, all_positions.copy(), level_data["enemy_count"])
+        bullets = []
+        lives = LIVES
+        score = 0
+        running = True
+        game_over = False
 
-    level_data = {
-        "level": 1,
-        "enemy_count": ENEMY_START_COUNT,
-        "last_shot_time": 0,
-        "shoot_delay": 1000,
-        "dx": 2,
-        "descent": 20,
-        "enemy_img": enemy_img
-    }
+        while running:
+            running = handle_events()
+            keys = pygame.key.get_pressed()
+            lives, game_over, score = update_game_state(
+                keys, player_rect, bullets, enemies, all_positions, level_data, lives, score)
 
-    enemies = create_enemies(enemy_img, all_positions.copy(), level_data["enemy_count"])
-    bullets = []
-    lives = LIVES
-    score = 0
+            if game_over:
+                break
 
-    running = True
-    while running:
-        running = handle_events()
-        keys = pygame.key.get_pressed()
-        lives, game_over, score = update_game_state(
-            keys, player_rect, bullets, enemies, all_positions, level_data, lives, score)
+            draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img, score)
+            clock.tick(60)
 
-        if game_over:
-            running = False
-
-        draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img, score)
-        clock.tick(60)
-
-    pygame.quit()
+        draw_game_over(screen)
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    waiting = False
 
 if __name__ == "__main__":
     main()
