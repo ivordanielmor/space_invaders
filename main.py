@@ -1,6 +1,5 @@
-# 1. PowerUp osztály létrehozása
-# Írj egy PowerUp osztályt, amely pygame sprite, és megadott típusú képet,
-# spawn időt, időtartamot tárol:
+# 2. Véletlenszerű power-up spawn és ütközés
+# Minden frame-ben kis eséllyel jelenjen meg új power-up, és ellenőrizd az ütközést:
 
 import pygame
 import random
@@ -30,7 +29,6 @@ class PowerUp(pygame.sprite.Sprite):
         self.duration = duration_ms
 
     def is_active(self):
-        """Visszaadja, hogy még aktív-e a powerup (időtartam nem járt le)."""
         current_time = pygame.time.get_ticks()
         return (current_time - self.spawn_time) < self.duration
 
@@ -121,9 +119,14 @@ def reset_level(player_rect, bullets, enemies, all_positions, level_data, same_l
     player_rect.midbottom = (WIDTH // 2, HEIGHT)
     level_data["dx"] = 2
 
-def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives, score):
+def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives, score, powerups, player_powerups):
     current_time = pygame.time.get_ticks()
     move_player(player_rect, keys, PLAYER_SPEED)
+
+    if len(powerups) == 0 and random.random() < 0.005:
+        pos = (random.randint(50, WIDTH-50), random.randint(50, HEIGHT-150))
+        powerup = PowerUp("star.png", "star", pos, 4000)
+        powerups.add(powerup)
 
     if keys[pygame.K_SPACE] and current_time - level_data["last_shot_time"] > level_data["shoot_delay"]:
         bullets.append([player_rect.centerx, player_rect.top])
@@ -132,10 +135,20 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
     move_bullets(bullets, BULLET_SPEED)
 
     for bullet in bullets[:]:
+        hit_powerup = False
+        for powerup in powerups:
+            if powerup.rect.collidepoint(bullet):
+                powerups.remove(powerup)
+                if bullet in bullets:
+                    bullets.remove(bullet)
+                hit_powerup = True
+                break
+        if hit_powerup:
+            continue
+
         for enemy in enemies[:]:
             if enemy["rect"].collidepoint(bullet):
                 bullets.remove(bullet)
-
                 nearby_count = 0
                 ex, ey = enemy["rect"].center
                 for other in enemies:
@@ -145,17 +158,23 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
                     dist = ((ex - ox) ** 2 + (ey - oy) ** 2) ** 0.5
                     if dist <= COMBO_RADIUS:
                         nearby_count += 1
-
                 if nearby_count > 0:
                     score += 20
                 else:
                     score += 10
-
                 enemies.remove(enemy)
                 break
 
-    player_died = False
+    for powerup in list(powerups):
+        if not powerup.is_active():
+            powerups.remove(powerup)
 
+    for powerup in list(powerups):
+        if player_rect.colliderect(powerup.rect):
+            player_powerups[powerup.type] = pygame.time.get_ticks()
+            powerups.remove(powerup)
+
+    player_died = False
     for enemy in enemies:
         enemy["rect"].x += int(level_data["dx"] * enemy["speed"])
         if enemy["rect"].right >= WIDTH or enemy["rect"].left <= 0:
@@ -178,7 +197,7 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
     game_over = lives <= 0 or len(enemies) == 0
     return lives, game_over, score
 
-def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, heart_img, score):
+def draw_game(screen, player_img, player_rect, enemies, bullets, powerups, level, lives, heart_img, score):
     screen.fill((0, 0, 0))
 
     for b in bullets:
@@ -186,6 +205,8 @@ def draw_game(screen, player_img, player_rect, enemies, bullets, level, lives, h
 
     for enemy in enemies:
         screen.blit(enemy["image"], enemy["rect"])
+
+    powerups.draw(screen)
 
     screen.blit(player_img, player_rect)
 
@@ -247,6 +268,9 @@ def main():
         bullets = []
         lives = LIVES
         score = 0
+        powerups = pygame.sprite.Group()
+        player_powerups = {}
+
         running = True
         game_over = False
 
@@ -254,12 +278,12 @@ def main():
             running = handle_events()
             keys = pygame.key.get_pressed()
             lives, game_over, score = update_game_state(
-                keys, player_rect, bullets, enemies, all_positions, level_data, lives, score)
+                keys, player_rect, bullets, enemies, all_positions, level_data, lives, score, powerups, player_powerups)
 
             if game_over:
                 break
 
-            draw_game(screen, player_img, player_rect, enemies, bullets, level_data["level"], lives, heart_img, score)
+            draw_game(screen, player_img, player_rect, enemies, bullets, powerups, level_data["level"], lives, heart_img, score)
             clock.tick(60)
 
         draw_game_over(screen)
