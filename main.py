@@ -1,9 +1,13 @@
-# 3. Hatáskezelés – Power-up aktiválása és időzítés
-# Az aktiválás során kapjon a játékos ideiglenes vagy végleges bónuszt:
+# HÁZI FELADAT
+# Készíts a játékhoz egy egyszerű menüt induláskor, ahol a játékos választhat:
+# – Indítás
+# – Nehézség (könnyű / normál / nehéz)
+# – Kilépés
+# A menüben a kurzor-nyilakkal lehessen mozogni, Enter-rel kiválasztani, ESC-pel kilépni!
 
 import pygame
-import random
 import sys
+import random
 
 # Általános beállítások
 WIDTH, HEIGHT = 800, 600
@@ -14,8 +18,6 @@ ENEMY_PADDING_X = 10
 ENEMY_PADDING_Y = 25
 ENEMY_OFFSET_X = 80
 ENEMY_OFFSET_Y = 30
-ENEMY_START_COUNT = 8
-LIVES = 3
 COMBO_RADIUS = 50
 BASE_SHOOT_DELAY = 1000
 POWERUP_SHOOT_DELAY = 300
@@ -31,14 +33,22 @@ class PowerUp(pygame.sprite.Sprite):
         self.duration = duration_ms
 
     def is_active(self):
-        current_time = pygame.time.get_ticks()
-        return (current_time - self.spawn_time) < self.duration
+        return pygame.time.get_ticks() - self.spawn_time < self.duration
 
-def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
+def tint_image(image, tint_color):
+    tinted_image = image.copy()
+    for x in range(image.get_width()):
+        for y in range(image.get_height()):
+            pixel = image.get_at((x, y))
+            if pixel.a != 0:
+                tinted_image.set_at((x, y), pygame.Color(*tint_color, pixel.a))
+    return tinted_image
+
+def generate_enemy_positions():
     return [
-        (offset_x + col * (enemy_width + padding_x),
-         offset_y + row * (enemy_height + padding_y))
-        for row in range(rows) for col in range(cols)
+        (ENEMY_OFFSET_X + col * (20 + ENEMY_PADDING_X),
+         ENEMY_OFFSET_Y + row * (20 + ENEMY_PADDING_Y))
+        for row in range(ROWS) for col in range(COLS)
     ]
 
 def load_player():
@@ -55,29 +65,20 @@ def load_heart():
     img = pygame.image.load("heart.png").convert_alpha()
     return pygame.transform.smoothscale(img, (32, 32))
 
-def tint_image(image, tint_color):
-    tinted_image = image.copy()
-    for x in range(image.get_width()):
-        for y in range(image.get_height()):
-            pixel = image.get_at((x, y))
-            if pixel.a != 0:
-                tinted_image.set_at((x, y), pygame.Color(*tint_color, pixel.a))
-    return tinted_image
-
-def move_player(rect, keys, speed):
+def move_player(rect, keys):
     if keys[pygame.K_LEFT]:
-        rect.x -= speed
+        rect.x -= PLAYER_SPEED
     if keys[pygame.K_RIGHT]:
-        rect.x += speed
+        rect.x += PLAYER_SPEED
     rect.left = max(rect.left, 0)
     rect.right = min(rect.right, WIDTH)
 
-def move_bullets(bullets, speed):
+def move_bullets(bullets):
     for b in bullets:
-        b[1] -= speed
+        b[1] -= BULLET_SPEED
     bullets[:] = [b for b in bullets if b[1] > 0]
 
-def create_enemies(enemy_img, all_positions, count):
+def create_enemies(enemy_img, all_positions, count, speed_multiplier=1.0):
     random.shuffle(all_positions)
     enemies = []
     for pos in all_positions[:count]:
@@ -86,33 +87,18 @@ def create_enemies(enemy_img, all_positions, count):
         color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
         tinted_img = tint_image(scaled_img, color)
         rect = tinted_img.get_rect(topleft=pos)
-        enemies.append({
-            "rect": rect,
-            "speed": random.uniform(1.0, 2.0),
-            "image": tinted_img,
-            "size": size
-        })
+        speed = random.uniform(1.0, 2.0) * speed_multiplier
+        enemies.append({"rect": rect, "speed": speed, "image": tinted_img})
     return enemies
-
-def handle_events():
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            pygame.quit()
-            sys.exit()
-    return True
 
 def reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False):
     if not same_level:
         level_data["level"] += 1
-        level_data["enemy_count"] = ENEMY_START_COUNT + (level_data["level"] - 1) * 2
-    max_enemies = min(level_data["enemy_count"], ROWS * COLS)
-    enemies[:] = create_enemies(level_data["enemy_img"], all_positions.copy(), max_enemies)
+        level_data["enemy_count"] += 2
+    enemies[:] = create_enemies(level_data["enemy_img"], all_positions, level_data["enemy_count"], level_data["speed_multiplier"])
     bullets.clear()
     player_rect.midbottom = (WIDTH // 2, HEIGHT)
-    level_data["dx"] = 2
+    level_data["dx"] = 2 * level_data["speed_multiplier"]
 
 def spawn_powerup(powerups):
     if len(powerups) == 0 and random.random() < 0.001:
@@ -120,9 +106,9 @@ def spawn_powerup(powerups):
         powerup = PowerUp("star.png", "star", pos, 4000)
         powerups.add(powerup)
 
-def update_shoot_delay(player_powerups, current_time):
+def update_shoot_delay(player_powerups):
     if "star" in player_powerups:
-        if current_time - player_powerups["star"] < 4000:
+        if pygame.time.get_ticks() - player_powerups["star"] < 4000:
             return POWERUP_SHOOT_DELAY
         else:
             del player_powerups["star"]
@@ -146,13 +132,8 @@ def handle_bullet_collisions(bullets, enemies, powerups, score, player_powerups)
             for enemy in enemies[:]:
                 if enemy["rect"].collidepoint(bullet):
                     bullets.remove(bullet)
-                    ex, ey = enemy["rect"].center
-                    nearby_count = sum(
-                        1 for other in enemies if other is not enemy and
-                        ((ex - other["rect"].centerx) ** 2 + (ey - other["rect"].centery) ** 2) ** 0.5 <= COMBO_RADIUS
-                    )
-                    score += 20 if nearby_count > 0 else 10
                     enemies.remove(enemy)
+                    score += 10
                     break
     return score
 
@@ -170,9 +151,9 @@ def collect_powerups(player_rect, powerups, player_powerups):
 def move_enemies(enemies, level_data):
     for enemy in enemies:
         enemy["rect"].x += int(level_data["dx"] * enemy["speed"])
-    if any(enemy["rect"].right >= WIDTH or enemy["rect"].left <= 0 for enemy in enemies):
+    if any(e["rect"].right >= WIDTH or e["rect"].left <= 0 for e in enemies):
         for e in enemies:
-            e["rect"].y += level_data["descent"]
+            e["rect"].y += 20
         level_data["dx"] *= -1.1
 
 def check_player_collision(player_rect, enemies):
@@ -180,49 +161,37 @@ def check_player_collision(player_rect, enemies):
 
 def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives, score, powerups, player_powerups):
     current_time = pygame.time.get_ticks()
-    move_player(player_rect, keys, PLAYER_SPEED)
+    move_player(player_rect, keys)
     spawn_powerup(powerups)
-
-    shoot_delay = update_shoot_delay(player_powerups, current_time)
+    shoot_delay = update_shoot_delay(player_powerups)
     handle_shooting(keys, bullets, player_rect, current_time, level_data, shoot_delay)
-    move_bullets(bullets, BULLET_SPEED)
-
+    move_bullets(bullets)
     score = handle_bullet_collisions(bullets, enemies, powerups, score, player_powerups)
     remove_expired_powerups(powerups)
     collect_powerups(player_rect, powerups, player_powerups)
     move_enemies(enemies, level_data)
 
-    player_died = check_player_collision(player_rect, enemies)
-    if player_died:
+    if check_player_collision(player_rect, enemies):
         lives -= 1
         reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
     elif not enemies:
         reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False)
 
-    game_over = lives <= 0 or len(enemies) == 0
-    return lives, game_over, score
-
-def draw_bullets(screen, bullets):
-    for b in bullets:
-        pygame.draw.circle(screen, (255, 255, 255), b, 5)
-
-def draw_enemies(screen, enemies):
-    for enemy in enemies:
-        screen.blit(enemy["image"], enemy["rect"])
+    return lives, lives <= 0, score
 
 def draw_ui(screen, level, lives, heart_img, score):
     font = pygame.font.SysFont(None, 36)
-    level_text = font.render(f"Level {level}", True, (255, 255, 255))
-    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
-    screen.blit(level_text, (10, 10))
-    screen.blit(score_text, (WIDTH - score_text.get_width() - 10, 10))
+    screen.blit(font.render(f"Level {level}", True, (255, 255, 255)), (10, 10))
+    screen.blit(font.render(f"Score: {score}", True, (255, 255, 255)), (WIDTH - 150, 10))
     for i in range(lives):
         screen.blit(heart_img, (10 + i * 34, 50))
 
 def draw_game(screen, player_img, player_rect, enemies, bullets, powerups, level, lives, heart_img, score):
     screen.fill((0, 0, 0))
-    draw_bullets(screen, bullets)
-    draw_enemies(screen, enemies)
+    for b in bullets:
+        pygame.draw.circle(screen, (255, 255, 255), b, 5)
+    for e in enemies:
+        screen.blit(e["image"], e["rect"])
     powerups.draw(screen)
     screen.blit(player_img, player_rect)
     draw_ui(screen, level, lives, heart_img, score)
@@ -230,52 +199,110 @@ def draw_game(screen, player_img, player_rect, enemies, bullets, powerups, level
 
 def draw_game_over(screen):
     screen.fill((0, 0, 0))
-    big_font = pygame.font.SysFont(None, 72)
-    font = pygame.font.SysFont(None, 36)
-    text1 = big_font.render("GAME OVER", True, (255, 0, 0))
-    text2 = font.render("Nyomj ENTER-t az újrakezdéshez", True, (255, 255, 255))
-    text3 = font.render("Kilépéshez nyomj ESC-t", True, (200, 200, 200))
-    screen.blit(text1, ((WIDTH - text1.get_width()) // 2, HEIGHT // 2 - 80))
-    screen.blit(text2, ((WIDTH - text2.get_width()) // 2, HEIGHT // 2 + 10))
-    screen.blit(text3, ((WIDTH - text3.get_width()) // 2, HEIGHT // 2 + 50))
+    font = pygame.font.SysFont(None, 72)
+    text = font.render("GAME OVER", True, (255, 0, 0))
+    screen.blit(text, ((WIDTH - text.get_width()) // 2, HEIGHT // 2 - 40))
     pygame.display.flip()
 
-def initialize_game():
+def initialize_game(difficulty_index):
     player_img, player_rect = load_player()
     enemy_img = load_enemy()
     heart_img = load_heart()
-    all_positions = generate_enemy_positions(ROWS, COLS, ENEMY_OFFSET_X, ENEMY_OFFSET_Y, ENEMY_PADDING_X, ENEMY_PADDING_Y, 20, 20)
+    all_positions = generate_enemy_positions()
+
+    if difficulty_index == 0:
+        lives = 5
+        enemy_count = 6
+        speed_multiplier = 0.8
+    elif difficulty_index == 1:
+        lives = 3
+        enemy_count = 8
+        speed_multiplier = 1.0
+    else:
+        lives = 2
+        enemy_count = 10
+        speed_multiplier = 1.3
+
     level_data = {
         "level": 1,
-        "enemy_count": ENEMY_START_COUNT,
+        "enemy_count": enemy_count,
         "last_shot_time": 0,
-        "shoot_delay": BASE_SHOOT_DELAY,
-        "dx": 2,
-        "descent": 20,
-        "enemy_img": enemy_img
+        "dx": 2 * speed_multiplier,
+        "enemy_img": enemy_img,
+        "speed_multiplier": speed_multiplier
     }
-    enemies = create_enemies(enemy_img, all_positions.copy(), level_data["enemy_count"])
+
+    enemies = create_enemies(enemy_img, all_positions.copy(), enemy_count, speed_multiplier)
     bullets = []
     powerups = pygame.sprite.Group()
     player_powerups = {}
     score = 0
-    lives = LIVES
+
     return player_img, player_rect, enemies, bullets, all_positions, level_data, heart_img, powerups, player_powerups, score, lives
 
-def game_loop(screen, clock):
-    (player_img, player_rect, enemies, bullets, all_positions, level_data,
-     heart_img, powerups, player_powerups, score, lives) = initialize_game()
+def game_loop(screen, clock, difficulty_index):
+    (player_img, player_rect, enemies, bullets, all_positions, level_data, heart_img,
+     powerups, player_powerups, score, lives) = initialize_game(difficulty_index)
 
-    running = True
-    while running:
-        running = handle_events()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return
+
         keys = pygame.key.get_pressed()
-        lives, game_over, score = update_game_state(keys, player_rect, bullets, enemies, all_positions, level_data, lives, score, powerups, player_powerups)
+        lives, game_over, score = update_game_state(keys, player_rect, bullets, enemies,
+                                                    all_positions, level_data, lives, score,
+                                                    powerups, player_powerups)
         if game_over:
-            break
-        draw_game(screen, player_img, player_rect, enemies, bullets, powerups, level_data["level"], lives, heart_img, score)
+            draw_game_over(screen)
+            pygame.time.wait(3000)
+            return
+
+        draw_game(screen, player_img, player_rect, enemies, bullets, powerups,
+                  level_data["level"], lives, heart_img, score)
         clock.tick(60)
-    return True
+
+def menu_loop(screen, clock):
+    font = pygame.font.SysFont(None, 48)
+    options = ["Indítás", "Nehézség: Normál", "Kilépés"]
+    selected = 0
+    difficulties = ["Könnyű", "Normál", "Nehéz"]
+    difficulty_index = 1
+
+    while True:
+        screen.fill((0, 0, 0))
+        for i, text in enumerate(options):
+            color = (255, 255, 0) if i == selected else (255, 255, 255)
+            label = font.render(text, True, color)
+            screen.blit(label, ((WIDTH - label.get_width()) // 2, 200 + i * 60))
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_DOWN:
+                    selected = (selected + 1) % len(options)
+                elif event.key == pygame.K_UP:
+                    selected = (selected - 1) % len(options)
+                elif event.key == pygame.K_RETURN:
+                    if selected == 0:
+                        return difficulty_index  # <<< Fontos!
+                    elif selected == 1:
+                        difficulty_index = (difficulty_index + 1) % len(difficulties)
+                        options[1] = f"Nehézség: {difficulties[difficulty_index]}"
+                    elif selected == 2:
+                        pygame.quit()
+                        sys.exit()
+                elif event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
+        clock.tick(60)
 
 def main():
     pygame.init()
@@ -284,20 +311,8 @@ def main():
     clock = pygame.time.Clock()
 
     while True:
-        game_loop(screen, clock)
-        draw_game_over(screen)
-        waiting = True
-        while waiting:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        waiting = False
-                    elif event.key == pygame.K_ESCAPE:
-                        pygame.quit()
-                        sys.exit()
+        difficulty_index = menu_loop(screen, clock)
+        game_loop(screen, clock, difficulty_index)
 
 if __name__ == "__main__":
     main()
