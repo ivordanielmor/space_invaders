@@ -1,6 +1,6 @@
-# HÁZI FELADAT
-# Tegyél be egy „Kilépés” opciót is: ha az ESC
-# billentyűt nyomod, teljesen zárja be a játékot (pygame.quit() + sys.exit()).
+# 1. PowerUp osztály létrehozása
+# Írj egy PowerUp osztályt, amely pygame sprite, és megadott típusú képet,
+# spawn időt, időtartamot tárol:
 
 import pygame
 import random
@@ -18,6 +18,21 @@ ENEMY_OFFSET_Y = 30
 ENEMY_START_COUNT = 8
 LIVES = 3
 COMBO_RADIUS = 50
+
+class PowerUp(pygame.sprite.Sprite):
+    def __init__(self, image_path, type, position, duration_ms):
+        super().__init__()
+        self.image = pygame.image.load(image_path).convert_alpha()
+        self.image = pygame.transform.smoothscale(self.image, (32, 32))
+        self.rect = self.image.get_rect(center=position)
+        self.type = type
+        self.spawn_time = pygame.time.get_ticks()
+        self.duration = duration_ms
+
+    def is_active(self):
+        """Visszaadja, hogy még aktív-e a powerup (időtartam nem járt le)."""
+        current_time = pygame.time.get_ticks()
+        return (current_time - self.spawn_time) < self.duration
 
 def generate_enemy_positions(rows, cols, offset_x, offset_y, padding_x, padding_y, enemy_width, enemy_height):
     positions = []
