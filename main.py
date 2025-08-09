@@ -1,5 +1,7 @@
-# 2. Határ-ellenőrzés – ne menjen ki a pályáról!
-# Fontos, hogy az ellenség ne tűnjön el a képernyő szélén:
+# HÁZI FELADAT
+# Adj be egy „távolságküszöböt”: csak akkor kezdjen el követni az ellenség,
+# ha a játékos és az ellenség távolsága X-nél nagyobb (például 200 pixel).
+# Ellenkező esetben álljon meg!
 
 import pygame
 import sys
@@ -153,14 +155,20 @@ def collect_powerups(player_rect, powerups, player_powerups):
 def move_enemies(enemies, level_data, player_rect):
     enemy_speed_x = 1.2
     enemy_speed_y = 0.5
+    threshold = 200
 
     for enemy in enemies:
-        if player_rect.centerx > enemy["float_x"] + enemy["rect"].width / 2:
-            enemy["float_x"] += enemy_speed_x
-        elif player_rect.centerx < enemy["float_x"] + enemy["rect"].width / 2:
-            enemy["float_x"] -= enemy_speed_x
+        dx = (player_rect.centerx - (enemy["float_x"] + enemy["rect"].width / 2))
+        dy = (player_rect.centery - (enemy["float_y"] + enemy["rect"].height / 2))
+        distance = (dx ** 2 + dy ** 2) ** 0.5
 
-        enemy["float_y"] += enemy_speed_y
+        if distance > threshold:
+            if dx > 0:
+                enemy["float_x"] += enemy_speed_x
+            elif dx < 0:
+                enemy["float_x"] -= enemy_speed_x
+
+            enemy["float_y"] += enemy_speed_y
 
         enemy_width = enemy["rect"].width
         enemy_height = enemy["rect"].height
