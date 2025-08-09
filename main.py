@@ -1,9 +1,5 @@
-# HÁZI FELADAT
-# Készíts a játékhoz egy egyszerű menüt induláskor, ahol a játékos választhat:
-# – Indítás
-# – Nehézség (könnyű / normál / nehéz)
-# – Kilépés
-# A menüben a kurzor-nyilakkal lehessen mozogni, Enter-rel kiválasztani, ESC-pel kilépni!
+# 1. Egyszerű követés implementálása
+# A fő játékhurokban, miután kirajzoltad a játékost és az ellenséget, tedd be ezt a kódot:
 
 import pygame
 import sys
@@ -88,7 +84,13 @@ def create_enemies(enemy_img, all_positions, count, speed_multiplier=1.0):
         tinted_img = tint_image(scaled_img, color)
         rect = tinted_img.get_rect(topleft=pos)
         speed = random.uniform(1.0, 2.0) * speed_multiplier
-        enemies.append({"rect": rect, "speed": speed, "image": tinted_img})
+        enemies.append({
+            "rect": rect,
+            "speed": speed,
+            "image": tinted_img,
+            "float_x": float(rect.x),
+            "float_y": float(rect.y),
+        })
     return enemies
 
 def reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=False):
@@ -148,13 +150,20 @@ def collect_powerups(player_rect, powerups, player_powerups):
             player_powerups[powerup.type] = pygame.time.get_ticks()
             powerups.remove(powerup)
 
-def move_enemies(enemies, level_data):
+def move_enemies(enemies, level_data, player_rect):
+    enemy_speed_x = 1.2
+    enemy_speed_y = 0.5
+
     for enemy in enemies:
-        enemy["rect"].x += int(level_data["dx"] * enemy["speed"])
-    if any(e["rect"].right >= WIDTH or e["rect"].left <= 0 for e in enemies):
-        for e in enemies:
-            e["rect"].y += 20
-        level_data["dx"] *= -1.1
+        if player_rect.centerx > enemy["float_x"] + enemy["rect"].width / 2:
+            enemy["float_x"] += enemy_speed_x
+        elif player_rect.centerx < enemy["float_x"] + enemy["rect"].width / 2:
+            enemy["float_x"] -= enemy_speed_x
+
+        enemy["float_y"] += enemy_speed_y
+
+        enemy["rect"].x = int(enemy["float_x"])
+        enemy["rect"].y = int(enemy["float_y"])
 
 def check_player_collision(player_rect, enemies):
     return any(enemy["rect"].colliderect(player_rect) for enemy in enemies)
@@ -169,7 +178,7 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions, level_
     score = handle_bullet_collisions(bullets, enemies, powerups, score, player_powerups)
     remove_expired_powerups(powerups)
     collect_powerups(player_rect, powerups, player_powerups)
-    move_enemies(enemies, level_data)
+    move_enemies(enemies, level_data, player_rect)
 
     if check_player_collision(player_rect, enemies):
         lives -= 1
@@ -292,7 +301,7 @@ def menu_loop(screen, clock):
                     selected = (selected - 1) % len(options)
                 elif event.key == pygame.K_RETURN:
                     if selected == 0:
-                        return difficulty_index  # <<< Fontos!
+                        return difficulty_index
                     elif selected == 1:
                         difficulty_index = (difficulty_index + 1) % len(difficulties)
                         options[1] = f"Nehézség: {difficulties[difficulty_index]}"
