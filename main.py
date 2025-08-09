@@ -1,5 +1,5 @@
-# 1. Egyszerű követés implementálása
-# A fő játékhurokban, miután kirajzoltad a játékost és az ellenséget, tedd be ezt a kódot:
+# 2. Határ-ellenőrzés – ne menjen ki a pályáról!
+# Fontos, hogy az ellenség ne tűnjön el a képernyő szélén:
 
 import pygame
 import sys
@@ -161,6 +161,12 @@ def move_enemies(enemies, level_data, player_rect):
             enemy["float_x"] -= enemy_speed_x
 
         enemy["float_y"] += enemy_speed_y
+
+        enemy_width = enemy["rect"].width
+        enemy_height = enemy["rect"].height
+
+        enemy["float_x"] = max(0, min(WIDTH - enemy_width, enemy["float_x"]))
+        enemy["float_y"] = min(HEIGHT - enemy_height, enemy["float_y"])
 
         enemy["rect"].x = int(enemy["float_x"])
         enemy["rect"].y = int(enemy["float_y"])
