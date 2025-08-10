@@ -1,7 +1,8 @@
-# 1. Több ellenség követése és "trükkös" mozgása
-# Iteráld végig az enemies listát minden frame-ben, és minden ellenség:
-# Ha szerencséje van (10% eséllyel), "ugrik" egy nagyot balra vagy jobbra, ezzel becsaphat!
-# Különben if/else logikával követi a játékos X pozícióját.
+# 2. Feladat: Színezés távolság alapján
+# A vizuális visszajelzés kedvéért színezd az ellenségeket attól függően, milyen messze vannak a játékostól:
+# – Ha <100 pixel: piros,
+# – 100–250 pixel: sárga,
+# – messzebb: zöld.
 
 import pygame
 import sys
@@ -184,6 +185,20 @@ def move_enemies(enemies, level_data, player_rect):
 
         enemy["rect"].x = int(enemy["float_x"])
         enemy["rect"].y = int(enemy["float_y"])
+
+        dx = player_rect.centerx - (enemy["float_x"] + enemy["rect"].width / 2)
+        dy = player_rect.centery - (enemy["float_y"] + enemy["rect"].height / 2)
+        distance = (dx ** 2 + dy ** 2) ** 0.5
+
+        if distance < 100:
+            color = (255, 0, 0)
+        elif distance <= 250:
+            color = (255, 255, 0)
+        else:
+            color = (0, 255, 0)
+
+        base_img = pygame.transform.smoothscale(level_data["enemy_img"], (enemy_width, enemy_height))
+        enemy["image"] = tint_image(base_img, color)
 
 def check_player_collision(player_rect, enemies):
     return any(enemy["rect"].colliderect(player_rect) for enemy in enemies)
