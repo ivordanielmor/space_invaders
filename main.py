@@ -1,8 +1,9 @@
-# 2. Feladat: Színezés távolság alapján
-# A vizuális visszajelzés kedvéért színezd az ellenségeket attól függően, milyen messze vannak a játékostól:
-# – Ha <100 pixel: piros,
-# – 100–250 pixel: sárga,
-# – messzebb: zöld.
+# HÁZI FELADAT
+# Tedd még nehezebbé: – Időnként minden ellenség "ugorjon" egyet, de ha már
+# nagyon közel vannak (<70px), legyen esély rá, hogy teljesen random irányba
+# lépnek (pl. akár el is kerülik a játékost).
+# – Kísérletezz: próbáld ki, mennyire lesz izgalmasabb,
+# ha az ugrás esélyét és nagyságát változtatod!
 
 import pygame
 import sys
@@ -157,20 +158,27 @@ def move_enemies(enemies, level_data, player_rect):
     enemy_speed_x = 1.2
     enemy_speed_y = 0.5
     jump_distance = 60
+    close_distance = 70
+    jump_chance_far = 0.010
+    jump_chance_close = 0.15
     threshold = 200
 
     for enemy in enemies:
-        if random.random() < 0.010:
+        dx = player_rect.centerx - (enemy["float_x"] + enemy["rect"].width / 2)
+        dy = player_rect.centery - (enemy["float_y"] + enemy["rect"].height / 2)
+        distance = (dx ** 2 + dy ** 2) ** 0.5
+
+        if distance < close_distance:
+            if random.random() < jump_chance_close:
+                enemy["float_x"] += random.choice([-jump_distance, jump_distance])
+                enemy["float_y"] += random.choice([-jump_distance, jump_distance])
+        elif random.random() < jump_chance_far:
             if random.choice([True, False]):
                 enemy["float_x"] -= jump_distance
             else:
                 enemy["float_x"] += jump_distance
             enemy["float_y"] += enemy_speed_y
         else:
-            dx = player_rect.centerx - (enemy["float_x"] + enemy["rect"].width / 2)
-            dy = player_rect.centery - (enemy["float_y"] + enemy["rect"].height / 2)
-            distance = (dx ** 2 + dy ** 2) ** 0.5
-
             if distance > threshold:
                 if dx > 0:
                     enemy["float_x"] += enemy_speed_x
@@ -185,10 +193,6 @@ def move_enemies(enemies, level_data, player_rect):
 
         enemy["rect"].x = int(enemy["float_x"])
         enemy["rect"].y = int(enemy["float_y"])
-
-        dx = player_rect.centerx - (enemy["float_x"] + enemy["rect"].width / 2)
-        dy = player_rect.centery - (enemy["float_y"] + enemy["rect"].height / 2)
-        distance = (dx ** 2 + dy ** 2) ** 0.5
 
         if distance < 100:
             color = (255, 0, 0)
