@@ -1,16 +1,12 @@
-# 1) PATCH A – Adatgyűjtés a meglévő játékba (CSV)
-# Cél: amikor kézzel irányítasz (AI OFF), minden billentyűleütéskor rögzítsünk egy példát. Így
-# a modell a te játékstílusodat tanulja.
-# A kódrészleteket a meglévő projekted megfelelő részeibe illeszd: a) importok, b)
-# segédfüggvények, c) eseménykezelő (KEYDOWN).
-# a) Új importok (a fájl tetején)
-# b) Segédfüggvények (a többi def mellé)
-# c) Eseménykezelésben (KEYDOWN) – csak kézi módban loggolunk
+# 1) PATCH B – Modell betöltése és új döntés
+# Add hozzá az importot, töltsd be a modellt, majd írd meg az ML-alapú döntésfüggvényt. A régi
+# szabály-alapú logika maradjon meg!
 
 import sys
 from typing import Tuple, List, Dict, Any
 import pygame
 from helper import *
+import joblib
 
 
 def draw_ui(screen: pygame.Surface, level: int, lives: int,
@@ -272,6 +268,16 @@ def main() -> None:
     Kivétel dobása:
         pygame.error: Ha az ablak létrehozása hibát ad.
     """
+    global model, model_loaded
+    try:
+        model = joblib.load("player_model.joblib")
+        model_loaded = True
+        print("ML modell sikeresen betöltve.")
+    except Exception as e:
+        print("Figyelem: modell betöltése sikertelen:", e)
+        model = None
+        model_loaded = False
+
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Space Invaders")
