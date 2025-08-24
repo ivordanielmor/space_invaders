@@ -16,6 +16,8 @@ ENEMY_OFFSET_Y = 30
 COMBO_RADIUS = 50
 BASE_SHOOT_DELAY = 1000
 POWERUP_SHOOT_DELAY = 300
+BULLET_RADIUS = 5
+AIM_EXTRA = 3
 
 # Debug
 DEBUG = False
@@ -212,11 +214,11 @@ def move_player(rect: pygame.Rect, keys: Any, ai_action: Optional[Action] = None
         elif mv in ("down", "retreat"):
             rect.y += PLAYER_SPEED
     else:
-        if keys[pygame.K_LEFT]:
+        if keys and keys[pygame.K_LEFT]:
             rect.x -= PLAYER_SPEED
-        if keys[pygame.K_RIGHT]:
+        if keys and keys[pygame.K_RIGHT]:
             rect.x += PLAYER_SPEED
-        if keys[pygame.K_DOWN]:
+        if keys and keys[pygame.K_DOWN]:
             rect.y += PLAYER_SPEED
 
     rect.left = max(rect.left, 0)
@@ -348,7 +350,7 @@ def handle_shooting(keys: Any, bullets: List[List[int]], player_rect: pygame.Rec
     """Kezeli a lövést billentyűzetről vagy AI-ból.
 
     Paraméterek:
-        keys: `pygame.key.get_pressed()` eredménye.
+        keys: `pygame.key.get_pressed()` eredménye, vagy None AI módban.
         bullets (List[List[int]]): Lövedékek listája. Bővülhet.
         player_rect (pygame.Rect): Játékos rect. Felső élről indul a lövedék.
         current_time (int): `pygame.time.get_ticks()`.
@@ -360,14 +362,19 @@ def handle_shooting(keys: Any, bullets: List[List[int]], player_rect: pygame.Rec
         None
     """
     should_shoot = False
-    if ai_action and ai_action["shoot"]:
+
+    # AI lövés
+    if ai_action and ai_action.get("shoot", False):
         should_shoot = True
-    elif keys[pygame.K_SPACE]:
+    # Billentyű lövés (csak ha keys nem None!)
+    elif keys and keys[pygame.K_SPACE]:
         should_shoot = True
 
+    # Ha tényleg lőni kell és letelt a késleltetés
     if should_shoot and current_time - level_data["last_shot_time"] > shoot_delay:
         bullets.append([player_rect.centerx, player_rect.top])
         level_data["last_shot_time"] = current_time
+
 
 
 def handle_bullet_collisions(bullets: List[List[int]], enemies: List[Dict[str, Any]],
@@ -603,6 +610,14 @@ def _decide_move_attack(dx: float, dist: float) -> Optional[str]:
             return "right"
     return None
 
+def aligned_for_shot(player_rect: pygame.Rect, target_rect: pygame.Rect, extra: int = AIM_EXTRA) -> bool:
+    """Igaz, ha a játékos középvonala a cél hit-box folyosójában van.
+
+    A folyosó: [target.left - slack, target.right + slack],
+    ahol slack = BULLET_RADIUS + extra + target.width//4 (kicsi sprite-oknál is találjon).
+    """
+    slack = BULLET_RADIUS + extra + (target_rect.width // 4)
+    return (target_rect.left - slack) <= player_rect.centerx <= (target_rect.right + slack)
 
 def decide_action(player_rect: pygame.Rect, enemies: List[Dict[str, Any]],
                   powerups: pygame.sprite.Group) -> Action:
@@ -641,28 +656,41 @@ def decide_action(player_rect: pygame.Rect, enemies: List[Dict[str, Any]],
     if enemy is not None and dx is not None and dist is not None:
         if dist < 150:
             action["move"] = "retreat"
-            if abs(dx) <= 25:
+            if aligned_for_shot(player_rect, enemy["rect"]):
                 action["shoot"] = True
             _log_throttled(f"Retreat, d={dist:.1f}, action: {action}", action)
             return action
 
         action["move"] = _decide_move_attack(dx, dist)
-        if abs(dx) <= 25:
+        if aligned_for_shot(player_rect, enemy["rect"]):
             action["shoot"] = True
         _log_throttled(f"Enemy decision, d={dist:.1f}, dx={dx:.1f}, action: {action}", action)
-
-    if action["move"] is None:
-        action["move"] = last_move_direction
-
-    _log_throttled(f"Default move, action: {action}", action)
     return action
 
+def enemy_breached_player_row(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]) -> bool:
+    """Igaz, ha bármely ellenfél elérte/átlépte a játékos felső élét (sorát).
 
-def update_game_state(keys: Any, player_rect: pygame.Rect, bullets: List[List[int]],
-                      enemies: List[Dict[str, Any]], all_positions: List[Tuple[int, int]],
-                      level_data: Dict[str, Any], lives: int, score: int,
-                      powerups: pygame.sprite.Group, player_powerups: Dict[str, int],
-                      ai_mode: bool) -> Tuple[int, bool, int]:
+    Logika:
+        Ha bármely ellenség rect.bottom >= player_rect.top, akkor betört a játékos sorába,
+        ami azonnali életvesztést eredményez (Space Invaders-szerű szabály).
+
+    Paraméterek:
+        player_rect (pygame.Rect): Játékos ütköződoboza.
+        enemies (List[Dict[str,Any]]): Ellenségek listája (rect kulccsal).
+
+    Visszatérés:
+        bool: True, ha van sorátlépés, különben False.
+
+    Kivétel dobása:
+        Nincs.
+    """
+    top_line = player_rect.top
+    return any(e["rect"].bottom >= top_line for e in enemies)
+
+
+def update_game_state(keys, player_rect, bullets, enemies, all_positions,
+                      level_data, lives, score, powerups, player_powerups,
+                      ai_mode, external_ai_action=None):
     """Egy frame állapotfrissítése: mozgás, lövés, ütközéskezelés, szintváltás.
 
     Paraméterek:
@@ -678,6 +706,8 @@ def update_game_state(keys: Any, player_rect: pygame.Rect, bullets: List[List[in
         powerups (pygame.sprite.Group): Power-up objektumok.
         player_powerups (Dict[str,int]): Aktivált power-upok és időbélyegeik.
         ai_mode (bool): Ha True, AI vezérli a játékost.
+        external_ai_action (Optional[Action]): Külső AI döntés. Ha meg van adva,
+            felülírja a belső `decide_action` logikát.
 
     Visszatérés:
         Tuple[int, bool, int]: (lives, game_over, score)
@@ -689,12 +719,14 @@ def update_game_state(keys: Any, player_rect: pygame.Rect, bullets: List[List[in
         Listák és dict-ek helyben frissülnek. Szint resetelődhet.
     """
     current_time = pygame.time.get_ticks()
-    ai_action = decide_action(player_rect, enemies, powerups) if ai_mode else None
+    ai_action = external_ai_action if ai_mode else None
+    if ai_mode and ai_action is None:
+        ai_action = decide_action(player_rect, enemies, powerups)
 
-    move_player(player_rect, keys, ai_action if ai_mode else None)
+    move_player(player_rect, keys, ai_action)
     spawn_powerup(powerups)
     shoot_delay = update_shoot_delay(player_powerups)
-    handle_shooting(keys, bullets, player_rect, current_time, level_data, shoot_delay, ai_action if ai_mode else None)
+    handle_shooting(keys, bullets, player_rect, current_time, level_data, shoot_delay, ai_action)
     move_bullets(bullets)
     score = handle_bullet_collisions(bullets, enemies, powerups, score, player_powerups)
     remove_expired_powerups(powerups)
@@ -705,7 +737,11 @@ def update_game_state(keys: Any, player_rect: pygame.Rect, bullets: List[List[in
     if ai_mode and player_rect.bottom > SAFE_BASELINE:
         player_rect.y -= 1
 
-    if check_player_collision(player_rect, enemies):
+    # ÚJ: ha az ellenfél elérte a játékos sorát, azonnal életvesztés és reset
+    if enemy_breached_player_row(player_rect, enemies):
+        lives -= 1
+        reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
+    elif check_player_collision(player_rect, enemies):
         lives -= 1
         reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
     elif not enemies:
