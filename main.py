@@ -1,6 +1,6 @@
-# 1) PATCH B – Modell betöltése és új döntés
-# Add hozzá az importot, töltsd be a modellt, majd írd meg az ML-alapú döntésfüggvényt. A régi
-# szabály-alapú logika maradjon meg!
+# 2) PATCH C – Bekötés a fő ciklusba
+# Ha AI mód aktív, először az ML-t próbáld meg; ha nincs eredmény, essen vissza a szabály-alapú
+# döntésre.
 
 import sys
 from typing import Tuple, List, Dict, Any
@@ -8,6 +8,46 @@ import pygame
 from helper import *
 import joblib
 
+# --- ML modell betöltése ---
+try:
+    model = joblib.load("player_model.joblib")
+    model_loaded = True
+    print("ML modell sikeresen betöltve.")
+except Exception as e:
+    print("Figyelem: modell betöltése sikertelen:", e)
+    model = None
+    model_loaded = False
+
+
+def decide_action_ml(player_rect, enemies, shoot_delay, last_shot_time):
+    """
+    ML-alapú döntés: 0=balra, 1=jobbra, 2=lő.
+    Ha nincs modell/ellenfél, None-t ad vissza -> fallback a szabály alapúra.
+    """
+    if (not model_loaded) or (not enemies):
+        return None  # nincs modell vagy célpont
+
+    # Legközelebbi ellenség
+    target = min(enemies, key=lambda e: abs(e["rect"].centerx - player_rect.centerx))
+    dx = target["rect"].centerx - player_rect.centerx
+    dy = target["rect"].centery - player_rect.centery
+
+    try:
+        action_id = int(model.predict([[dx, dy]])[0])
+    except Exception:
+        return None  # ha gond van a predikcióval
+
+    # Akció szótár
+    action = {"move": None, "shoot": False}
+    if action_id == 0:
+        action["move"] = "left"
+    elif action_id == 1:
+        action["move"] = "right"
+    elif action_id == 2:
+        if pygame.time.get_ticks() - last_shot_time > shoot_delay:
+            action["shoot"] = True
+
+    return action
 
 def draw_ui(screen: pygame.Surface, level: int, lives: int,
             heart_img: pygame.Surface, score: int, ai_mode: bool) -> None:
@@ -156,15 +196,17 @@ def game_loop(screen: pygame.Surface, clock: pygame.time.Clock, difficulty_index
     m_key_pressed = False
 
     while True:
+        # --- eseménykezelés ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
             elif event.type == pygame.KEYDOWN and ai_mode == False:
-                debug_print(f"Key pressed: {event.key}, enemies count: {len(enemies)}")  # Debug üzenet
+                # billentyűnaplózás tanításhoz
+                debug_print(f"Key pressed: {event.key}, enemies count: {len(enemies)})")
                 center = closest_enemy_center(player_rect, enemies)
-                debug_print(f"Closest enemy center: {center}")  # Debug üzenet
+                debug_print(f"Closest enemy center: {center}")
                 if center is not None:
                     cx, cy = center
                     dx = cx - player_rect.centerx
@@ -172,38 +214,82 @@ def game_loop(screen: pygame.Surface, clock: pygame.time.Clock, difficulty_index
                     speed_multiplier = level_data["speed_multiplier"]
                     enemy_count = len(enemies)
                     if event.key == pygame.K_LEFT:
-                        debug_print("Logging LEFT action")  # Debug üzenet
+                        debug_print("Logging LEFT action")
                         log_example(dx, dy, 0, speed_multiplier, enemy_count)
                     elif event.key == pygame.K_RIGHT:
-                        debug_print("Logging RIGHT action")  # Debug üzenet
+                        debug_print("Logging RIGHT action")
                         log_example(dx, dy, 1, speed_multiplier, enemy_count)
                     elif event.key == pygame.K_SPACE:
-                        debug_print("Logging SPACE action")  # Debug üzenet
+                        debug_print("Logging SPACE action")
                         log_example(dx, dy, 2, speed_multiplier, enemy_count)
                 else:
-                    debug_print("No enemies, skipping log_example")  # Debug üzenet
+                    debug_print("No enemies, skipping log_example")
 
+        # --- AI mód váltás ---
         keys = pygame.key.get_pressed()
         if keys[pygame.K_m] and not m_key_pressed:
             ai_mode = not ai_mode
             m_key_pressed = True
-            print(f"AI mode toggled: {ai_mode}")  # Debug üzenet
+            print(f"AI mode toggled: {ai_mode}")
         elif not keys[pygame.K_m]:
             m_key_pressed = False
 
-        lives, game_over, score = update_game_state(
-            keys, player_rect, bullets, enemies, all_positions, level_data,
-            lives, score, powerups, player_powerups, ai_mode
-        )
+        # --- AI vezérlés vagy manuális ---
+        if ai_mode:
+            # 1) ML döntés
+            action = decide_action_ml(
+                player_rect, enemies,
+                update_shoot_delay(player_powerups),
+                level_data["last_shot_time"]
+            )
+            # 2) fallback szabály alapú döntésre
+            if action is None:
+                action = decide_action(
+                    player_rect, enemies, bullets,
+                    update_shoot_delay(player_powerups),
+                    level_data["last_shot_time"]
+                )
 
+            # --- végrehajtás ---
+            if action["move"] == "left":
+                player_rect.x -= PLAYER_SPEED
+            elif action["move"] == "right":
+                player_rect.x += PLAYER_SPEED
+
+            # pályahatárok
+            player_rect.left = max(player_rect.left, 0)
+            player_rect.right = min(player_rect.right, WIDTH)
+
+            # lövés
+            current_time = pygame.time.get_ticks()
+            if action["shoot"] and current_time - level_data["last_shot_time"] > update_shoot_delay(player_powerups):
+                bullets.append([player_rect.centerx, player_rect.top])
+                level_data["last_shot_time"] = current_time
+
+            # állapot frissítés billentyűk nélkül
+            lives, game_over, score = update_game_state(
+                None, player_rect, bullets, enemies, all_positions,
+                level_data, lives, score, powerups, player_powerups, ai_mode
+            )
+
+        else:
+            # kézi irányítás
+            lives, game_over, score = update_game_state(
+                keys, player_rect, bullets, enemies, all_positions,
+                level_data, lives, score, powerups, player_powerups, ai_mode
+            )
+
+        # --- Game Over kezelése ---
         if game_over:
             draw_game_over(screen)
             pygame.time.wait(3000)
             return
 
+        # --- Kirajzolás ---
         draw_game(screen, player_img, player_rect, enemies, bullets, powerups,
                   level_data["level"], lives, heart_img, score, ai_mode)
         clock.tick(60)
+
 
 
 def menu_loop(screen: pygame.Surface, clock: pygame.time.Clock) -> int:
