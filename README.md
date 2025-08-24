@@ -85,7 +85,7 @@ Mód:  HYBRID  | Score:  1860  | Lives:  2
 
 ## 📷 Screenshot
 
-`![Screenshot](screenshot.png)`
+![Screenshot](screenshot.png)
 
 ---
 
@@ -161,7 +161,7 @@ A beépített mérőmód 3 perc **Hibrid**, majd 3 perc **ML** blokkot futtat, *
 
 ## 📷 Képernyőkép
 
-![Képernyőkép](screenshot.PNG)
+![Képernyőkép](screenshot.png)
 
 ---
 
