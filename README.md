@@ -85,8 +85,7 @@ Mód:  HYBRID  | Score:  1860  | Lives:  2
 
 ## 📷 Screenshot
 
-*(Add your own image)*  
-`![Screenshot](./images/screenshot.png)`
+`![Screenshot](screenshot.png)`
 
 ---
 
@@ -157,6 +156,12 @@ Eredmény: teszt pontosság, mintaszám, mentett `player_model.joblib` (futásko
 
 ### 3–3 perces összehasonlítás
 A beépített mérőmód 3 perc **Hibrid**, majd 3 perc **ML** blokkot futtat, **mindkét váltásnál teljes újraindítással**. A blokk végén (vagy korai Game Overnél) **konzolra kiírja** az eredményt és az összesítést.
+
+---
+
+## 📷 Képernyőkép
+
+![Képernyőkép](screenshot.PNG)
 
 ---
 
