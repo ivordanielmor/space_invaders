@@ -96,6 +96,8 @@ def draw_game(screen: pygame.Surface,
     draw_ui(screen, level, lives, heart_img, score, ai_mode)
     pygame.display.flip()
 
+
+
 def draw_game_over(screen: pygame.Surface) -> None:
     """Kirajzolja a „GAME OVER” képernyőt."""
     screen.fill((0, 0, 0))
@@ -336,6 +338,7 @@ def game_loop(screen: pygame.Surface,
                 print("Végső eredmények:", scores)
             # ÚJ: Mentsd el a végső pontszámot
             save_score(player_name, score)
+            print_top5()
             draw_game_over(screen)
             pygame.time.wait(3000)
             return
