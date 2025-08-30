@@ -37,3 +37,23 @@ def load_powerup_image(image_path: str) -> pygame.Surface:
     """Betölti és 32×32-re méretezi a power-up sprite-ot."""
     img = pygame.image.load(image_path).convert_alpha()
     return pygame.transform.smoothscale(img, (32, 32))
+
+def draw_top5(screen: pygame.Surface, font: pygame.font.Font, font_small: pygame.font.Font) -> None:
+    """Kirajzolja a Top5 ranglistát a képernyőre (Pygame)."""
+    from csv_helper import load_top5  # lokális import a ciklikus import elkerüléséhez
+    screen.fill((0, 0, 0))
+    title = font.render("Ranglista - TOP 5", True, (255, 255, 255))
+    screen.blit(title, ((WIDTH - title.get_width()) // 2, 80))
+
+    top = load_top5()
+    if not top:
+        msg = font_small.render("Még nincs adat a ranglistán.", True, (200, 200, 200))
+        screen.blit(msg, ((WIDTH - msg.get_width()) // 2, HEIGHT // 2))
+    else:
+        for i, (name, score) in enumerate(top, start=1):
+            line = font_small.render(f"{i}. {name} — {score} pont", True, (255, 255, 255))
+            screen.blit(line, ((WIDTH - line.get_width()) // 2, 160 + i * 40))
+
+    hint = font_small.render("Esc = vissza a főmenübe", True, (180, 180, 180))
+    screen.blit(hint, ((WIDTH - hint.get_width()) // 2, HEIGHT - 60))
+    pygame.display.flip()

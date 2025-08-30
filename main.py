@@ -150,39 +150,44 @@ def initialize_game(difficulty_index: int
             level_data, heart_img, powerups, player_powerups, score, lives)
 
 def menu_loop(screen: pygame.Surface, clock: pygame.time.Clock) -> Tuple[int, str]:
-    """Főmenü ciklus: elemválasztás, nehézség állítása és játékosnév bevitel."""
+    """Főmenü: indítás, ranglista, nehézség, játékosnév, kilépés.
+
+    Új: 'Ranglista' opció — Enter vagy Space megnyomására belép a Ranglista-nézetbe.
+    A Ranglista-nézetből ESC-sel lehet visszalépni a főmenübe.
+    """
     font = pygame.font.SysFont(None, 48)
     font_small = pygame.font.SysFont(None, 28)
-    options = ["Indítás", "Nehézség: Normál", "Játékosnév: Player", "Kilépés"]
-    selected = 0
     difficulties = ["Könnyű", "Normál", "Nehéz"]
     difficulty_index = 1
     player_name = "Player"
+
+    options = [
+        "Indítás",
+        "Ranglista",
+        f"Nehézség: {difficulties[difficulty_index]}",
+        f"Játékosnév: {player_name}",
+        "Kilépés"
+    ]
+    selected = 0
     input_active = False
     cursor_visible = True
     cursor_timer = 0
     max_name_length = 20
 
-    while True:
+    def draw_menu() -> None:
         screen.fill((0, 0, 0))
-        # Frissítjük a kurzort villogáshoz (500 ms-onként vált)
-        current_time = pygame.time.get_ticks()
-        if current_time - cursor_timer > 500:
-            cursor_visible = not cursor_visible
-            cursor_timer = current_time
-
         for i, text in enumerate(options):
-            # Kiemelés a kiválasztott opcióhoz
             color = (255, 255, 0) if i == selected else (255, 255, 255)
-            if i == 2 and input_active:
-                # Játékosnév bevitel közben: zöld szín és villogó kurzor
-                text = f"Játékosnév: {player_name}{'|' if cursor_visible else ''}"
+            # ha a játékosnév mező aktív, zöld és kurzor villog
+            if i == 3 and input_active:
+                display = f"Játékosnév: {player_name}{'|' if cursor_visible else ''}"
                 color = (0, 255, 0)
-            label = font.render(text, True, color)
+            else:
+                display = text
+            label = font.render(display, True, color)
             screen.blit(label, ((WIDTH - label.get_width()) // 2, 200 + i * 60))
 
-        # Utasítás a bevitelhez
-        if selected == 2:
+        if selected == 3:
             instruction = font_small.render(
                 "Írd be a nevet, majd nyomj Entert (Backspace: törlés, Esc: kilép)",
                 True, (200, 200, 200)
@@ -191,47 +196,105 @@ def menu_loop(screen: pygame.Surface, clock: pygame.time.Clock) -> Tuple[int, st
 
         pygame.display.flip()
 
+    # Pygame-alapú TOP5 rajzoló (lokális függvény, elkerüli a ciklikus importot)
+    def draw_top5_screen() -> None:
+        from csv_helper import load_top5  # lokális import a ciklikus import elkerüléséhez
+        screen.fill((0, 0, 0))
+        title = font.render("Ranglista - TOP 5", True, (255, 255, 255))
+        screen.blit(title, ((WIDTH - title.get_width()) // 2, 80))
+
+        top = load_top5()
+        if not top:
+            msg = font_small.render("Még nincs adat a ranglistán.", True, (200, 200, 200))
+            screen.blit(msg, ((WIDTH - msg.get_width()) // 2, HEIGHT // 2))
+        else:
+            for i, (name, score) in enumerate(top, start=1):
+                line = font_small.render(f"{i}. {name} — {score} pont", True, (255, 255, 255))
+                screen.blit(line, ((WIDTH - line.get_width()) // 2, 160 + i * 40))
+
+        hint = font_small.render("Esc = vissza a főmenübe", True, (180, 180, 180))
+        screen.blit(hint, ((WIDTH - hint.get_width()) // 2, HEIGHT - 60))
+        pygame.display.flip()
+
+    while True:
+        # kurzor villogása
+        current_time = pygame.time.get_ticks()
+        if current_time - cursor_timer > 500:
+            cursor_visible = not cursor_visible  # nonlocal emuláció - felülíródik lent újra
+            cursor_timer = current_time
+
+        # Rajzolás
+        draw_menu()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
+
             elif event.type == pygame.KEYDOWN:
+                # navigáció
                 if event.key == pygame.K_DOWN:
                     selected = (selected + 1) % len(options)
-                    input_active = False  # Kilépés a bevitelből, ha másik opcióra lép
-                    options[2] = f"Játékosnév: {player_name or 'Player'}"
+                    input_active = False
+                    options[3] = f"Játékosnév: {player_name or 'Player'}"
                 elif event.key == pygame.K_UP:
                     selected = (selected - 1) % len(options)
-                    input_active = False  # Kilépés a bevitelből
-                    options[2] = f"Játékosnév: {player_name or 'Player'}"
-                elif event.key == pygame.K_RETURN:
-                    if selected == 0:
+                    input_active = False
+                    options[3] = f"Játékosnév: {player_name or 'Player'}"
+
+                # kiválasztás (Enter vagy Space)
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    if selected == 0:  # Indítás
                         return difficulty_index, player_name or "Player"
-                    elif selected == 1:
+
+                    elif selected == 1:  # Ranglista — belépünk a ranglista nézetbe
+                        in_scoreboard = True
+                        while in_scoreboard:
+                            draw_top5_screen()
+                            for ev in pygame.event.get():
+                                if ev.type == pygame.QUIT:
+                                    pygame.quit(); sys.exit()
+                                elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                                    in_scoreboard = False
+                            clock.tick(30)
+                        # visszatérés után a menü újrarajzolódik
+                        options[3] = f"Játékosnév: {player_name or 'Player'}"
+                        cursor_visible = True
+                        cursor_timer = pygame.time.get_ticks()
+
+                    elif selected == 2:  # Nehézség váltás
                         difficulty_index = (difficulty_index + 1) % len(difficulties)
-                        options[1] = f"Nehézség: {difficulties[difficulty_index]}"
-                    elif selected == 2:
+                        options[2] = f"Nehézség: {difficulties[difficulty_index]}"
+
+                    elif selected == 3:  # Játékosnév bevitel indítása
                         input_active = True
                         cursor_visible = True
                         cursor_timer = current_time
-                    elif selected == 3:
+
+                    elif selected == 4:  # Kilépés
                         pygame.quit(); sys.exit()
+
                 elif event.key == pygame.K_ESCAPE:
                     if input_active:
                         input_active = False
-                        options[2] = f"Játékosnév: {player_name or 'Player'}"
+                        options[3] = f"Játékosnév: {player_name or 'Player'}"
                     else:
                         pygame.quit(); sys.exit()
-                elif input_active and selected == 2:
+
+                # név bevitel kezelése, ha aktív
+                elif input_active and selected == 3:
                     if event.key == pygame.K_BACKSPACE:
                         player_name = player_name[:-1]
-                        options[2] = f"Játékosnév: {player_name or 'Player'}"
+                        options[3] = f"Játékosnév: {player_name or 'Player'}"
                     elif event.key == pygame.K_RETURN:
                         input_active = False
-                        options[2] = f"Játékosnév: {player_name or 'Player'}"
-                    elif event.unicode.isprintable() and len(player_name) < max_name_length:
-                        player_name += event.unicode
-                        options[2] = f"Játékosnév: {player_name or 'Player'}"
+                        options[3] = f"Játékosnév: {player_name or 'Player'}"
+                    else:
+                        # unicode karakter hozzáadása, ha megengedett
+                        if getattr(event, "unicode", "") and event.unicode.isprintable() and len(player_name) < max_name_length:
+                            player_name += event.unicode
+                            options[3] = f"Játékosnév: {player_name or 'Player'}"
 
+        # frissítési tempó
         clock.tick(60)
 
 def game_loop(screen: pygame.Surface,
