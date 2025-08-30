@@ -1,6 +1,8 @@
 import pygame
 import random
 import csv
+from csv_helper import *
+from ui_helper import *
 from pathlib import Path
 from typing import Tuple, List, Dict, Optional, Any, TypedDict
 
@@ -28,12 +30,10 @@ _last_action: Optional[Dict[str, Any]] = None
 # Állapot
 last_move_direction = "right"  # alap vízszintes irány
 
-
 class Action(TypedDict):
     """AI döntés reprezentációja."""
     move: Optional[str]   # "left" | "right" | "retreat" | None
     shoot: bool
-
 
 # --- Segédosztályok és segédfüggvények ---
 
@@ -73,8 +73,7 @@ class PowerUp(pygame.sprite.Sprite):
             ValueError: Ha `duration_ms` < 0 vagy a `position` nem 2 elemű egészpár.
         """
         super().__init__()
-        self.image = pygame.image.load(image_path).convert_alpha()
-        self.image = pygame.transform.smoothscale(self.image, (32, 32))
+        self.image = load_powerup_image(image_path)  # Use ui_helper function
         self.rect = self.image.get_rect(center=position)
         self.type = type
         self.spawn_time = pygame.time.get_ticks()
@@ -97,34 +96,6 @@ class PowerUp(pygame.sprite.Sprite):
         """
         return pygame.time.get_ticks() - self.spawn_time < self.duration
 
-
-def tint_image(image: pygame.Surface, tint_color: Tuple[int, int, int]) -> pygame.Surface:
-    """Színezést alkalmaz egy képre per-pixel módszerrel.
-
-    Paraméterek:
-        image (pygame.Surface): Forráskép alpha-csatornával.
-        tint_color (Tuple[int,int,int]): RGB szín, amellyel a nem átlátszó pixeleket színezzük.
-
-    Visszatérés:
-        pygame.Surface: Új, megszínezett felület.
-
-    Teljesítmény:
-        O(w*h) pixelen iterál. Nagy sprite-oknál drága. Gyártás előtt érdemes cache-elni.
-
-    Kivétel dobása:
-        ValueError: Ha `tint_color` bármely komponense 0..255 tartományon kívül esik.
-    """
-    if any(c < 0 or c > 255 for c in tint_color):
-        raise ValueError("tint_color komponenseknek 0..255 között kell lenniük")
-    tinted_image = image.copy()
-    for x in range(image.get_width()):
-        for y in range(image.get_height()):
-            pixel = image.get_at((x, y))
-            if pixel.a != 0:
-                tinted_image.set_at((x, y), pygame.Color(*tint_color, pixel.a))
-    return tinted_image
-
-
 def generate_enemy_positions() -> List[Tuple[int, int]]:
     """Legenerálja az ellenségek kezdőpozícióit rács alapján.
 
@@ -139,58 +110,6 @@ def generate_enemy_positions() -> List[Tuple[int, int]]:
          ENEMY_OFFSET_Y + row * (20 + ENEMY_PADDING_Y))
         for row in range(ROWS) for col in range(COLS)
     ]
-
-
-def load_player() -> Tuple[pygame.Surface, pygame.Rect]:
-    """Betölti a játékos sprite-ot és beállítja a kezdőpozíciót.
-
-    Paraméterek:
-        Nincs. A fájlnév: "player.png".
-
-    Visszatérés:
-        Tuple[Surface, Rect]: A méretezett kép és a hozzátartozó rect.
-        A rect közepe alul: (WIDTH//2, HEIGHT-50).
-
-    Kivétel dobása:
-        pygame.error / FileNotFoundError: Ha a fájl nem tölthető be.
-    """
-    img = pygame.image.load("player.png").convert_alpha()
-    img = pygame.transform.smoothscale(img, (img.get_width() * 2, img.get_height() * 2))
-    rect = img.get_rect()
-    rect.midbottom = (WIDTH // 2, HEIGHT - 50)
-    return img, rect
-
-
-def load_enemy() -> pygame.Surface:
-    """Betölti az ellenség alap sprite-ját.
-
-    Paraméterek:
-        Nincs. A fájlnév: "enemy_spinvaders.png".
-
-    Visszatérés:
-        pygame.Surface: Alpha-csatornás felület.
-
-    Kivétel dobása:
-        pygame.error / FileNotFoundError: Ha a fájl nem tölthető be.
-    """
-    return pygame.image.load("enemy_spinvaders.png").convert_alpha()
-
-
-def load_heart() -> pygame.Surface:
-    """Betölti és 32×32-re méretezi az élet szimbólumot.
-
-    Paraméterek:
-        Nincs. A fájlnév: "heart.png".
-
-    Visszatérés:
-        pygame.Surface: Átméretezett felület.
-
-    Kivétel dobása:
-        pygame.error / FileNotFoundError: Ha a fájl nem tölthető be.
-    """
-    img = pygame.image.load("heart.png").convert_alpha()
-    return pygame.transform.smoothscale(img, (32, 32))
-
 
 def move_player(rect: pygame.Rect, keys: Any, ai_action: Optional[Action] = None) -> None:
     """Mozgatja a játékost billentyűzettel vagy AI utasítással.
@@ -226,7 +145,6 @@ def move_player(rect: pygame.Rect, keys: Any, ai_action: Optional[Action] = None
     rect.top = max(rect.top, 0)
     rect.bottom = min(rect.bottom, HEIGHT)
 
-
 def move_bullets(bullets: List[List[int]]) -> None:
     """Felfelé mozgatja a játékos lövedékeit és kilistázza a képernyőn kívülieket.
 
@@ -239,7 +157,6 @@ def move_bullets(bullets: List[List[int]]) -> None:
     for b in bullets:
         b[1] -= BULLET_SPEED
     bullets[:] = [b for b in bullets if b[1] > 0]
-
 
 def create_enemies(enemy_img: pygame.Surface, all_positions: List[Tuple[int, int]],
                    count: int, speed_multiplier: float = 1.0) -> List[Dict[str, Any]]:
@@ -279,7 +196,6 @@ def create_enemies(enemy_img: pygame.Surface, all_positions: List[Tuple[int, int
         })
     return enemies
 
-
 def reset_level(player_rect: pygame.Rect, bullets: List[List[int]],
                 enemies: List[Dict[str, Any]], all_positions: List[Tuple[int, int]],
                 level_data: Dict[str, Any], same_level: bool = False) -> None:
@@ -305,7 +221,6 @@ def reset_level(player_rect: pygame.Rect, bullets: List[List[int]],
     player_rect.midbottom = (WIDTH // 2, HEIGHT - 50)
     level_data["dx"] = 2 * level_data["speed_multiplier"]
 
-
 def spawn_powerup(powerups: pygame.sprite.Group) -> None:
     """Véletlenszerűen új power-upot spawnol.
 
@@ -322,7 +237,6 @@ def spawn_powerup(powerups: pygame.sprite.Group) -> None:
         pos = (random.randint(50, WIDTH - 50), random.randint(50, HEIGHT - 150))
         powerup = PowerUp("star.png", "star", pos, 4000)
         powerups.add(powerup)
-
 
 def update_shoot_delay(player_powerups: Dict[str, int]) -> int:
     """Visszaadja az aktuális lövési késleltetést a power-upok függvényében.
@@ -342,7 +256,6 @@ def update_shoot_delay(player_powerups: Dict[str, int]) -> int:
         else:
             del player_powerups["star"]
     return BASE_SHOOT_DELAY
-
 
 def handle_shooting(keys: Any, bullets: List[List[int]], player_rect: pygame.Rect,
                     current_time: int, level_data: Dict[str, Any], shoot_delay: int,
@@ -374,8 +287,6 @@ def handle_shooting(keys: Any, bullets: List[List[int]], player_rect: pygame.Rec
     if should_shoot and current_time - level_data["last_shot_time"] > shoot_delay:
         bullets.append([player_rect.centerx, player_rect.top])
         level_data["last_shot_time"] = current_time
-
-
 
 def handle_bullet_collisions(bullets: List[List[int]], enemies: List[Dict[str, Any]],
                              powerups: pygame.sprite.Group, score: int,
@@ -409,7 +320,6 @@ def handle_bullet_collisions(bullets: List[List[int]], enemies: List[Dict[str, A
                     break
     return score
 
-
 def remove_expired_powerups(powerups: pygame.sprite.Group) -> None:
     """Eltávolítja a lejárt power-upokat a sprite-csoportból.
 
@@ -422,7 +332,6 @@ def remove_expired_powerups(powerups: pygame.sprite.Group) -> None:
     for powerup in list(powerups):
         if not powerup.is_active():
             powerups.remove(powerup)
-
 
 def collect_powerups(player_rect: pygame.Rect, powerups: pygame.sprite.Group,
                      player_powerups: Dict[str, int]) -> None:
@@ -440,7 +349,6 @@ def collect_powerups(player_rect: pygame.Rect, powerups: pygame.sprite.Group,
         if player_rect.colliderect(powerup.rect):
             player_powerups[powerup.type] = pygame.time.get_ticks()
             powerups.remove(powerup)
-
 
 def move_enemies(enemies: List[Dict[str, Any]], level_data: Dict[str, Any], player_rect: pygame.Rect) -> None:
     """Mozgatja az ellenségeket a játékos pozíciójához viszonyítva, ugrásokkal és követéssel.
@@ -506,7 +414,6 @@ def move_enemies(enemies: List[Dict[str, Any]], level_data: Dict[str, Any], play
         base_img = pygame.transform.smoothscale(level_data["enemy_img"], (enemy_width, enemy_height))
         enemy["image"] = tint_image(base_img, color)
 
-
 def check_player_collision(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]) -> bool:
     """Eldönti, hogy a játékos ütközik-e bármely ellenséggel.
 
@@ -518,7 +425,6 @@ def check_player_collision(player_rect: pygame.Rect, enemies: List[Dict[str, Any
         bool: True, ha bármely ellenség rect-je metszi a játékos rect-jét.
     """
     return any(enemy["rect"].colliderect(player_rect) for enemy in enemies)
-
 
 def _log_throttled(msg: str, action: Action) -> None:
     """Időkorláttal és állapotváltozásra szűrve kiír debug üzeneteket.
@@ -543,7 +449,6 @@ def _log_throttled(msg: str, action: Action) -> None:
         _last_log = now
         _last_action = dict(action)
 
-
 def _nearest_star(player_rect: pygame.Rect, powerups: pygame.sprite.Group) -> Optional[PowerUp]:
     """Visszaadja a játékoshoz vízszintesen legközelebbi 'star' power-upot.
 
@@ -558,7 +463,6 @@ def _nearest_star(player_rect: pygame.Rect, powerups: pygame.sprite.Group) -> Op
     if not stars:
         return None
     return min(stars, key=lambda p: abs(p.rect.centerx - player_rect.centerx))
-
 
 def _enemy_metrics(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]
                    ) -> Tuple[Optional[Dict[str, Any]], Optional[float], Optional[float]]:
@@ -581,7 +485,6 @@ def _enemy_metrics(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]
     dx = e["rect"].centerx - player_rect.centerx
     dist = (dx ** 2 + (e["rect"].centery - player_rect.centery) ** 2) ** 0.5
     return e, float(dx), float(dist)
-
 
 def _decide_move_attack(dx: float, dist: float) -> Optional[str]:
     """Meghatározza a támadó mozgásirányt a célhoz képest.
@@ -687,10 +590,9 @@ def enemy_breached_player_row(player_rect: pygame.Rect, enemies: List[Dict[str, 
     top_line = player_rect.top
     return any(e["rect"].bottom >= top_line for e in enemies)
 
-
 def update_game_state(keys, player_rect, bullets, enemies, all_positions,
                       level_data, lives, score, powerups, player_powerups,
-                      ai_mode, external_ai_action=None):
+                      ai_mode, external_ai_action=None, player: str = "Player"):
     """Egy frame állapotfrissítése: mozgás, lövés, ütközéskezelés, szintváltás.
 
     Paraméterek:
@@ -708,6 +610,7 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions,
         ai_mode (bool): Ha True, AI vezérli a játékost.
         external_ai_action (Optional[Action]): Külső AI döntés. Ha meg van adva,
             felülírja a belső `decide_action` logikát.
+        player (str): Játékos neve a pontszám mentéséhez.
 
     Visszatérés:
         Tuple[int, bool, int]: (lives, game_over, score)
