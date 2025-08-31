@@ -181,17 +181,25 @@ def draw_game_over(screen: pygame.Surface) -> None:
     font = pygame.font.SysFont(None, 72)
     text = font.render("GAME OVER", True, (255, 0, 0))
     screen.blit(text, ((WIDTH - text.get_width()) // 2, HEIGHT // 2 - 40))
+
     font_small = pygame.font.SysFont(None, 36)
     try:
-        with open("scoreboard.csv", "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            next(reader)
-            scores = sorted([(row[0], int(row[1])) for row in reader], key=lambda x: x[1], reverse=True)[:5]
-            for i, (player, score) in enumerate(scores):
-                score_text = font_small.render(f"{player}: {score}", True, (255, 255, 255))
-                screen.blit(score_text, ((WIDTH - score_text.get_width()) // 2, HEIGHT // 2 + 20 + i * 40))
+        top5 = load_scores_clean(CSV_PATH)
     except Exception as e:
-        print(f"Hiba a pontszámok olvasásakor: {e}")
+        print(f"Hiba a pontszámok beolvasásakor: {e}")
+        top5 = []
+
+    if not top5:
+        info = font_small.render("Nincsenek mentett pontok.", True, (200, 200, 200))
+        screen.blit(info, ((WIDTH - info.get_width()) // 2, HEIGHT // 2 + 20))
+    else:
+        # load_scores_clean visszatérési értéke list[dict] {"player","score"}
+        for i, entry in enumerate(sorted(top5, key=lambda d: d["score"], reverse=True)[:5]):
+            player = entry["player"]
+            score = entry["score"]
+            score_text = font_small.render(f"{i+1}. {player}: {score}", True, (255, 255, 255))
+            screen.blit(score_text, ((WIDTH - score_text.get_width()) // 2, HEIGHT // 2 + 20 + i * 40))
+
     pygame.display.flip()
 
 def initialize_game(difficulty_index: int

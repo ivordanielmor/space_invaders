@@ -142,3 +142,67 @@ def print_top5(path: str = CSV_PATH) -> None:
     print("=== TOP 5 ===")
     for i, (name, score) in enumerate(top, start=1):
         print(f"{i}. {name} — {score} pont")
+
+def load_scores_clean(path: str = CSV_PATH) -> List[dict]:
+    """
+    Beolvassa a scoreboardot és megtisztítja:
+    - üres név → eldob
+    - score nem int vagy < 0 → eldob
+    - whitespace levágása (strip)
+    Visszatér: list[dict]: {"player": str, "score": int}
+    """
+    rows: List[dict] = []
+    if not os.path.exists(path):
+        return rows
+
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for raw in reader:
+            # raw lehet None vagy dict; biztosítsuk, hogy dict-ként kezeljük
+            if raw is None:
+                continue
+
+            name = (raw.get("player") or "").strip()
+            score_str = (raw.get("score") or "").strip()
+
+            if not name:
+                continue  # üres név → kuka
+
+            try:
+                score = int(score_str)
+            except (ValueError, TypeError):
+                continue  # nem szám → kuka
+
+            if score < 0:
+                continue  # negatív pont nem oké
+
+            rows.append({"player": name, "score": score})
+    return rows
+
+from typing import List, Dict, Iterable
+
+def best_by_player(rows: Iterable[dict]) -> Dict[str, int]:
+    """rows: iterable of {"player": str, "score": int} -> dict[player] = best_score"""
+    best: Dict[str, int] = {}
+    for r in rows:
+        # biztonságos kicsomagolás
+        name = (r.get("player") if isinstance(r, dict) else None) or ""
+        try:
+            score = int(r.get("score")) if isinstance(r, dict) else int(r[1])
+        except Exception:
+            continue  # kihagyjuk a hibás sorokat
+
+        name = name.strip()
+        if not name:
+            continue
+
+        if name not in best or score > best[name]:
+            best[name] = score
+    return best
+
+def to_sorted_list(best_map: Dict[str, int]) -> List[dict]:
+    """dict -> csökkenő sorrendű lista [{"player":..., "score":...}, ...]."""
+    items = [{"player": n, "score": s} for n, s in best_map.items()]
+    items.sort(key=lambda x: x["score"], reverse=True)
+    return items
+
