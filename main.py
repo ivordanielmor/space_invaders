@@ -4,6 +4,7 @@ import pygame
 from helper import *
 import joblib
 from csv_helper import init_csv
+import csv  # szükséges a draw_game_over-ban használt csv.reader-hez
 
 # --- ML modell betöltése (globálisan egyszer) ---
 try:
@@ -11,6 +12,8 @@ try:
     model_loaded = True
     print("ML modell sikeresen betöltve.")
 except Exception as e:
+    # Hibakezelés: ha a modell betöltése sikertelen, a program tovább tud futni
+    # (fallback: model = None, és model_loaded = False).
     print("Figyelem: modell betöltése sikertelen:", e)
     model = None
     model_loaded = False
@@ -25,7 +28,34 @@ def decide_action_ml(player_rect: pygame.Rect,
                      powerups: pygame.sprite.Group,
                      shoot_delay: int,
                      last_shot_time: int) -> Optional[Dict[str, Any]]:
-    """ML-alapú + hibrid döntés generálása az AI számára."""
+    """ML-alapú + hibrid döntés generálása az AI számára.
+
+    Paraméterek:
+        player_rect (pygame.Rect): A játékos aktuális ütközőkerete (pozíció + méret).
+        enemies (List[Dict[str, Any]]): Lista ellenségekről, ahol minden elem egy dict, amely
+                                        legalább egy "rect" (pygame.Rect) mezőt tartalmaz.
+        powerups (pygame.sprite.Group): A jelenet power-up sprite-csoportja.
+        shoot_delay (int): A kötelező késleltetés milliszekundumban két lövés között.
+        last_shot_time (int): Az utolsó lövés időbélyege (pygame.time.get_ticks() skáláján).
+
+    Visszatérés:
+        Optional[Dict[str, Any]]: Akció-dikt, amely a következő kulcsokat tartalmazza:
+            - "move": None | "left" | "right"
+            - "shoot": bool
+        Visszaad None-t, ha nincs cél (például nincs ellenség és nincs releváns powerup).
+
+    Mellékhatás:
+        - Prioritást ad a 'star' típusú powerupoknak: ha van közelben, arra pozícionál és lő.
+        - Ha nincs star és nincs ellenség, None-t ad vissza.
+        - Ha van ellenség, kiválaszt egy targetet (legközelebbi euklideszi távolság szerint),
+          majd hibrid szabályok alapján dönt a mozgatásról és lövésről.
+        - A függvény nem használ közvetlenül ML-predikciót; a név arra utal, hogy
+          itt integrálható egy betanított modell (globális `model`) kiegészítésként.
+        - Nem módosít globális állapotot.
+
+    Példa:
+        action = decide_action_ml(player_rect, enemies, powerups, 500, last_shot)
+    """
     stars = [p for p in powerups if getattr(p, "type", None) == "star"]
     if stars:
         star = min(stars, key=lambda p: abs(p.rect.centerx - player_rect.centerx))
@@ -63,7 +93,23 @@ def draw_ui(screen: pygame.Surface,
             heart_img: pygame.Surface,
             score: int,
             ai_mode: bool) -> None:
-    """Kirajzolja a felhasználói felületet (UI)."""
+    """Kirajzolja a felhasználói felületet (UI).
+
+    Paraméterek:
+        screen (pygame.Surface): A fő render célfelület.
+        level (int): Aktuális játékszint száma.
+        lives (int): Megjelenítendő életek száma.
+        heart_img (pygame.Surface): Az élet ikon Surface objektuma (32×32 várható).
+        score (int): Jelenlegi pontszám.
+        ai_mode (bool): Ha True, AI módot jelöl (zöld szöveg), különben sárga.
+
+    Visszatérés:
+        None
+
+    Mellékhatás:
+        - Kirajzolja a Level, Score és a mód státuszát, valamint az élet ikonokat.
+        - Feltételezi, hogy a pygame.font modul inicializálva van.
+    """
     font = pygame.font.SysFont(None, 36)
     screen.blit(font.render(f"Level {level}", True, (255, 255, 255)), (10, 10))
     screen.blit(font.render(f"Score: {score}", True, (255, 255, 255)), (WIDTH - 150, 10))
@@ -85,7 +131,28 @@ def draw_game(screen: pygame.Surface,
               heart_img: pygame.Surface,
               score: int,
               ai_mode: bool) -> None:
-    """Kirajzolja a teljes jelenetet."""
+    """Kirajzolja a teljes jelenetet.
+
+    Paraméterek:
+        screen (pygame.Surface): Render cél.
+        player_img (pygame.Surface): Játékos sprite.
+        player_rect (pygame.Rect): Játékos pozícióját tartalmazó Rect.
+        enemies (List[Dict[str, Any]]): Ellenségek listája (minden elem dict, legalább "image" és "rect").
+        bullets (List[List[int]]): Lövedékek pozíciói (például [x, y]).
+        powerups (pygame.sprite.Group): Power-up sprite-ok csoportja.
+        level (int): Aktuális szint.
+        lives (int): Életek száma.
+        heart_img (pygame.Surface): Élet ikon Surface.
+        score (int): Pontszám.
+        ai_mode (bool): AI mód jelzés.
+
+    Visszatérés:
+        None
+
+    Mellékhatás:
+        - Kitörli a képernyőt, kirajzolja a lövedékeket, ellenségeket, powerupokat és a játékost,
+          majd meghívja a draw_ui-t és frissíti a kijelzőt (`pygame.display.flip()`).
+    """
     screen.fill((0, 0, 0))
     for b in bullets:
         pygame.draw.circle(screen, (255, 255, 255), b, 5)
@@ -96,10 +163,20 @@ def draw_game(screen: pygame.Surface,
     draw_ui(screen, level, lives, heart_img, score, ai_mode)
     pygame.display.flip()
 
-
-
 def draw_game_over(screen: pygame.Surface) -> None:
-    """Kirajzolja a „GAME OVER” képernyőt."""
+    """Kirajzolja a „GAME OVER” képernyőt.
+
+    Paraméterek:
+        screen (pygame.Surface): A render cél.
+
+    Visszatérés:
+        None
+
+    Mellékhatás:
+        - Megjelenít egy nagy "GAME OVER" feliratot.
+        - Megpróbálja beolvasni a "scoreboard.csv"-t és megjeleníteni a top 5 pontot.
+        - Hibák esetén (fájl hiánya, parse hiba) a kivételt a konzolra írja.
+    """
     screen.fill((0, 0, 0))
     font = pygame.font.SysFont(None, 72)
     text = font.render("GAME OVER", True, (255, 0, 0))
@@ -122,7 +199,23 @@ def initialize_game(difficulty_index: int
                                List[List[int]], List[Tuple[int, int]], Dict[str, Any],
                                pygame.Surface, pygame.sprite.Group, Dict[str, int],
                                int, int]:
-    """Inicializálja a játék állapotát."""
+    """Inicializálja a játék állapotát.
+
+    Paraméterek:
+        difficulty_index (int): 0 = Könnyű, 1 = Normál, 2 = Nehéz.
+
+    Visszatérés:
+        Tuple: Rendezett visszatérési érték a következő elemekkel:
+            (player_img, player_rect, enemies, bullets, all_positions,
+             level_data, heart_img, powerups, player_powerups, score, lives)
+
+    Mellékhatás:
+        - Betölti a szükséges sprite-okat (player, enemy, heart).
+        - Létrehozza az ellenségek pozícióit és inicializálja az `enemies` listát a
+          create_enemies hívásával.
+        - Beállítja a lives, enemy_count és speed_multiplier értékeket a nehézség alapján.
+        - Inicializálja az üres lövedék-, powerup- és player_powerups-szerkezeteket.
+    """
     player_img, player_rect = load_player()
     enemy_img = load_enemy()
     heart_img = load_heart()
@@ -175,6 +268,7 @@ def menu_loop(screen: pygame.Surface, clock: pygame.time.Clock) -> Tuple[int, st
     max_name_length = 20
 
     def draw_menu() -> None:
+        """Belső függvény: a főmenü kirajzolása (lokális, nincs docstring a felső szinten)."""
         screen.fill((0, 0, 0))
         for i, text in enumerate(options):
             color = (255, 255, 0) if i == selected else (255, 255, 255)
@@ -296,12 +390,35 @@ def menu_loop(screen: pygame.Surface, clock: pygame.time.Clock) -> Tuple[int, st
 
         # frissítési tempó
         clock.tick(60)
-
 def game_loop(screen: pygame.Surface,
               clock: pygame.time.Clock,
               difficulty_index: int,
               player_name: str) -> None:
-    """Fő játékkör."""
+    """Fő játékkör — belső ciklus a játék futtatásához.
+
+    Paraméterek:
+        screen (pygame.Surface): A fő render célfelület.
+        clock (pygame.time.Clock): Pygame clock objektum a frame-rate korlátozásához.
+        difficulty_index (int): Nehézség index (0=Könnyű,1=Normál,2=Nehéz).
+        player_name (str): A jelenlegi játékos neve, amely a ranglistába mentéskor használatos.
+
+    Visszatérés:
+        None
+
+    Mellékhatás:
+        - Inicializálja a játék állapotát az `initialize_game` hívásával.
+        - Kezeli a felhasználói inputot (billentyűk, kilépés), az AI váltását (M),
+          valamint a manuális játékos-bemenetet (nyíl, space) és azok logolását.
+        - Ha AI mód be van kapcsolva, külső döntést szerez `decide_action_ml`-ből
+          (visszaesés: `decide_action`), és ennek megfelelően hívja az `update_game_state`-et.
+        - Kezeli az életvesztést, a szint-resetet és a mérési időszakok közötti
+          átváltást (use_hybrid váltása idő alapján).
+        - A játék végén elmenti a pontszámot `save_score`-ral és kirajzolja a TOP5-öt.
+        - A függvény váratlan hibákat nem kezeli lokálisan; a hívó felel a kivételekért.
+
+    Példa:
+        game_loop(screen, clock, 1, "Alice")
+    """
     (player_img, player_rect, enemies, bullets, all_positions, level_data, heart_img,
      powerups, player_powerups, score, lives) = initialize_game(difficulty_index)
     use_hybrid = True
@@ -311,6 +428,7 @@ def game_loop(screen: pygame.Surface,
     m_key_pressed = False
 
     def _mode_key() -> str:
+        """Segédfüggvény: visszaadja az aktuális mérési mód kulcsát ('hybrid' vagy 'ml')."""
         return "hybrid" if use_hybrid else "ml"
 
     while True:
@@ -411,7 +529,19 @@ def game_loop(screen: pygame.Surface,
         clock.tick(60)
 
 def main() -> None:
-    """Belépési pont."""
+    """Belépési pont — inicializálja a Pygame-et és indítja a menüt/játékhurokot.
+
+    Paraméterek:
+        Nincsenek.
+
+    Visszatérés:
+        None
+
+    Mellékhatás:
+        - Inicializálja a pygame modult és a scoreboard CSV-t (`init_csv`).
+        - Létrehozza a képernyőt és a clock-ot, majd belép a menü/játék ciklusba.
+        - A program a felhasználó kilépéséig fut; ha a fájl közvetlenül fut, meghívja magát.
+    """
     pygame.init()
     init_csv()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
