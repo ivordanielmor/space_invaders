@@ -65,7 +65,6 @@ from csv_helper import init_csv, save_score_if_record, print_top5
 # UI és asset-útvonalak
 import ui_helper as ui
 
-
 # --- ML modell betöltése (globálisan egyszer) ---
 try:
     model = joblib.load("player_model.joblib")
