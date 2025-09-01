@@ -1,77 +1,125 @@
+"""Space Invaders – játékos AI tréning (KNN).
+
+Feladat:
+- Beolvassa a példákat CSV-ből (alap: assets/csv/examples.csv).
+- KNeighborsClassifier (k=3) modellt tanít a [dx, dy] → action feladatra.
+- Kiértékeli a pontosságot tesztadaton.
+- Elmenti a modellt (alap: player_model.joblib).
+
+Elvárt CSV fejléc:
+- Kötelező: dx, dy, action
+- Opcionális: speed_multiplier, enemy_count (figyelmen kívül hagyjuk)
+
+Használat:
+    python train_player_ai.py [CSV_PATH] [MODEL_PATH]
+
+Példák:
+    python train_player_ai.py
+    python train_player_ai.py assets/csv/examples.csv player_model.joblib
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Tuple
+
+import csv
+import sys
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
-import joblib
-import csv
-from typing import List, Tuple
-import sys
-from pathlib import Path
 
-def train_player_ai(csv_path: str = "examples.csv", model_path: str = "player_model.joblib") -> Tuple[float, int]:
-    """Betanít egy K-közeli szomszédok (KNN) modellt az examples.csv alapján, és elmenti.
+# --- Alapértelmezett útvonalak (config opcionális) ---
+try:
+    from config import CSV_DIR as _CFG_CSV_DIR
+    DEFAULT_CSV = str(Path(_CFG_CSV_DIR) / "examples.csv")
+except Exception:
+    DEFAULT_CSV = str(Path("assets") / "csv" / "examples.csv")
+
+DEFAULT_MODEL = "player_model.joblib"
+
+
+def train_player_ai(csv_path: str = DEFAULT_CSV,
+                    model_path: str = DEFAULT_MODEL) -> Tuple[float, int]:
+    """KNN modellt tanít az `examples.csv` alapján és elmenti lemezre.
 
     Paraméterek:
-        csv_path (str): Az adatokat tartalmazó CSV fájl elérési útja (alapértelmezett: "examples.csv").
-        model_path (str): A kimeneti modell fájl elérési útja (alapértelmezett: "player_model.joblib").
+        csv_path (str): Tanító adatok CSV útvonala. Alap: assets/csv/examples.csv.
+        model_path (str): A mentendő modell útvonala. Alap: player_model.joblib.
 
     Visszatérés:
-        Tuple[float, int]: (pontosság, minták száma)
-            - pontosság (float): A modell pontossága a tesztadatokon (0.0 és 1.0 között).
-            - minták száma (int): A tanító és teszt adatok teljes száma.
+        Tuple[float, int]: (pontosság, összes minta száma)
+            - pontosság: a tesztkészlet pontossága 0.0–1.0 között
+            - összes minta: betöltött és érvényes sorok száma
 
     Mellékhatás:
-        - A betanított modell a megadott `model_path`-ra mentődik.
-        - A konzolra kiíródik a modell pontossága és a mentés megerősítése.
-        - Hiba esetén (pl. üres CSV, hiányzó fejléc) a program kilép hibaüzenettel.
+        - Fájlrendszerből olvas és a modellt a `model_path`-ra menti.
+        - Konzolra ír információkat (adatok, pontosság, mentési hely).
 
     Kivétel dobása:
-        FileNotFoundError: Ha a `csv_path` nem létezik.
-        ValueError: Ha a CSV üres vagy hiányzik a szükséges fejléc.
+        FileNotFoundError: ha a `csv_path` nem létezik.
+        ValueError: ha a CSV üres, vagy hiányzik a 'dx','dy','action' fejléc.
+
+    Példa:
+        acc, n = train_player_ai()
     """
-    # Adatok betöltése
-    if not Path(csv_path).exists():
-        raise FileNotFoundError(f"A {csv_path} fájl nem létezik.")
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"A fájl nem létezik: {csv_path}")
 
     X: List[List[float]] = []
     y: List[int] = []
+    skipped = 0
 
-    with open(csv_path, newline="", encoding="utf-8") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         r = csv.DictReader(f)
-        # Ellenőrizzük a fejlécet
-        if not all(field in r.fieldnames for field in ["dx", "dy", "action"]):
-            raise ValueError("A CSV-nek tartalmaznia kell a 'dx', 'dy', 'action' oszlopokat.")
-        
+        if not r.fieldnames or not all(h in r.fieldnames for h in ("dx", "dy", "action")):
+            raise ValueError("Hiányzó fejléc(ek): szükséges oszlopok: 'dx','dy','action'.")
+
         for row in r:
-            X.append([float(row["dx"]), float(row["dy"])])
-            y.append(int(row["action"]))
+            try:
+                dx = float(row["dx"]); dy = float(row["dy"]); action = int(row["action"])
+                if action not in (0, 1, 2):  # új
+                    skipped += 1
+                    continue
+            except (KeyError, TypeError, ValueError):
+                skipped += 1
+                continue
+            X.append([dx, dy]); y.append(action)
 
     if not X:
-        raise ValueError(f"A {csv_path} üres, nincs adat a tanításhoz.")
+        raise ValueError(f"Üres vagy érvénytelen a CSV: {csv_path}")
 
-    # Adatok felosztása
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X, y, test_size=0.2, random_state=42, stratify=y  # új: stratify
     )
 
-    # Modell tanítása
     model = KNeighborsClassifier(n_neighbors=3)
     model.fit(X_train, y_train)
 
-    # Pontosság kiértékelése
     pred = model.predict(X_test)
     acc = accuracy_score(y_test, pred)
-    print(f"Pontosság: {round(acc * 100, 1)}%")
 
-    # Modell mentése
-    joblib.dump(model, model_path)
-    print(f"Mentve: {model_path}")
+    # modell mentése (szülőkönyvtár létrehozása szükség esetén)
+    mp = Path(model_path)
+    if mp.parent and str(mp.parent) not in (".", ""):
+        mp.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, mp)
+
+    print(f"Minták: összes={len(X)}, kihagyott={skipped}, tanítás={len(X_train)}, teszt={len(X_test)}")
+    print(f"Pontosság: {acc:.4f} ({acc*100:.1f}%)")
+    print(f"Modell mentve: {model_path}")
 
     return acc, len(X)
 
+
 if __name__ == "__main__":
     try:
-        accuracy, sample_count = train_player_ai()
-        print(f"Tanító és teszt minták száma: {sample_count}")
+        cpath = sys.argv[1] if len(sys.argv) >= 2 else DEFAULT_CSV
+        mpath = sys.argv[2] if len(sys.argv) >= 3 else DEFAULT_MODEL
+        accuracy, sample_count = train_player_ai(cpath, mpath)
+        print(f"Összes minta: {sample_count}")
     except (FileNotFoundError, ValueError) as e:
         print(f"Hiba: {e}")
         sys.exit(1)

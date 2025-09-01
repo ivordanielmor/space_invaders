@@ -1,190 +1,229 @@
-import pygame
-import random
-import csv
-from csv_helper import *
-from ui_helper import *
+"""Játékmenet logika és AI-segédek.
+
+I/O konvenciók:
+- Képek az `assets/images` mappából töltődnek a `ui_helper` modulon keresztül.
+- CSV-k az `assets/csv` mappában vannak. A tanító példák alapértelmezett fájlja: `assets/csv/examples.csv`.
+
+Felelősségi kör:
+- Játékos, lövedékek és ellenségek mozgatása.
+- Power-up kezelés.
+- Egylépéses állapotfrissítés (update_game_state).
+- Szabály-alapú AI döntés (decide_action) és metrikák.
+
+Megjegyzés:
+- Minden képernyőméret és egyéb konstans a `config` modulból jön.
+"""
+
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Tuple, List, Dict, Optional, Any, TypedDict
 
-# --- Globális beállítások ---
-WIDTH, HEIGHT = 800, 600
-PLAYER_SPEED = 5
-BULLET_SPEED = 10
-ROWS, COLS = 4, 5
-ENEMY_PADDING_X = 10
-ENEMY_PADDING_Y = 25
-ENEMY_OFFSET_X = 80
-ENEMY_OFFSET_Y = 30
-COMBO_RADIUS = 50
-BASE_SHOOT_DELAY = 1000
-POWERUP_SHOOT_DELAY = 300
-BULLET_RADIUS = 5
-AIM_EXTRA = 3
+import csv
+import random
+import pygame
 
-# Debug
-DEBUG = False
-LOG_EVERY_MS = 400
-_last_log = 0
+import config as cfg
+import ui_helper as ui
+
+
+# --- Debug beállítások ---
+DEBUG: bool = False
+"""Ha True, részletes naplózás történik a konzolra."""
+
+LOG_EVERY_MS: int = 400
+"""Legalább ennyi ms teljen el két debug log között."""
+
+_last_log: int = 0
 _last_action: Optional[Dict[str, Any]] = None
 
-# Állapot
-last_move_direction = "right"  # alap vízszintes irány
+# --- Állapot a mozgás irányának megtartásához ---
+last_move_direction: str = "right"
+"""Az utolsó ismert vízszintes mozgásirány. Értékek: "left" | "right"."""
+
 
 class Action(TypedDict):
-    """AI döntés reprezentációja."""
-    move: Optional[str]   # "left" | "right" | "retreat" | None
+    """AI döntés reprezentációja.
+
+    Kulcsok:
+        move (Optional[str]): "left" | "right" | "retreat" | None
+        shoot (bool): Lőjön-e az aktuális frame-ben.
+    """
+    move: Optional[str]
     shoot: bool
 
-# --- Segédosztályok és segédfüggvények ---
+
+# --- Gyorsított színezés cache-eléssel (méret+szín szerint) ---
+
+_TINT_CACHE: dict[tuple[int, int, int, int, int, int], pygame.Surface] = {}
+"""Kulcs: (id(base_surface), width, height, r, g, b) → tintelt Surface."""
+
+
+def _tint_image_replace(src: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
+    """Per-pixel színezés: az RGB-t `color`-ra állítja, az alfa megmarad.
+
+    Paraméterek:
+        src: Forrás felület, alpha csatornával.
+        color: (r,g,b), mind 0..255.
+
+    Visszatérés:
+        Új felület a beállított színnel.
+    """
+    r, g, b = color
+    if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
+        raise ValueError("A szín komponenseinek 0..255 között kell lenniük")
+    out = src.copy()
+    w, h = out.get_width(), out.get_height()
+    for x in range(w):
+        for y in range(h):
+            px = out.get_at((x, y))
+            if px.a != 0:
+                out.set_at((x, y), pygame.Color(r, g, b, px.a))
+    return out
+
+
+def _tinted(base: pygame.Surface, w: int, h: int, color: Tuple[int, int, int]) -> pygame.Surface:
+    """Visszaad egy skálázott+tintelt felületet cache-ből vagy legenerálja.
+
+    Cache-kulcs: (id(base), w, h, r, g, b)
+    """
+    key = (id(base), w, h, color[0], color[1], color[2])
+    cached = _TINT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    scaled = pygame.transform.smoothscale(base, (w, h))
+    tinted = _tint_image_replace(scaled, color)
+    _TINT_CACHE[key] = tinted
+    return tinted
+
 
 class PowerUp(pygame.sprite.Sprite):
-    """Egy játékbeli power-up objektum.
-
-    A példány a létrejöttekor betölti és 32×32-re méretezi a képet, majd
-    középre igazítva (`center=position`) állítja be az ütköződobozt.
+    """Power-up entitás. Képet betölt, 32×32-re skáláz, és lejárati idővel bír.
 
     Attribútumok:
-        image (pygame.Surface): A méretezett, átlátszóságot támogató sprite-kép.
-        rect (pygame.Rect): Az ütköződoboz, közepe a `position` koordinátán.
-        type (str): A power-up típusa, pl. "rapid_fire", "shield", "double_points".
-        spawn_time (int): Létrejövetel időbélyege `pygame.time.get_ticks()`-ből.
-        duration (int): Aktív idő ms-ban. Ennyi ideig számít érvényesnek.
+        image (pygame.Surface): A méretezett, átlátszóságot támogató sprite.
+        rect (pygame.Rect): Ütköződoboz, középre igazítva.
+        type (str): Típus címke (pl. "star").
+        spawn_time (int): Létrejövetel időbélyege (`pygame.time.get_ticks()`).
+        duration (int): Érvényességi időtartam ms-ban.
 
-    Megjegyzés:
-        A `type` név beárnyékolja a beépített `type` függvényt. Ha zavaró, nevezd át
-        pl. `powerup_type`-ra a hívó kóddal együtt.
+    Paraméterek:
+        image_path (str): Képfájl neve vagy útvonala. Ha csak név, az `assets/images` alól olvassuk.
+        powerup_type (str): Logikai típus.
+        position (Tuple[int, int]): Középpont (x, y) pixelben.
+        duration_ms (int): Aktív időtartam ms-ban.
+
+    Kivétel:
+        pygame.error / FileNotFoundError: Kép betöltési hiba.
+        ValueError: Negatív `duration_ms` esetén.
     """
 
-    def __init__(self, image_path: str, type: str, position: Tuple[int, int], duration_ms: int) -> None:
-        """Inicializálja a power-upot képpel, típussal, pozícióval és időtartammal.
-
-        Paraméterek:
-            image_path (str): Útvonal a képfájlhoz. Alpha-csatornát érdemes használni (PNG).
-            type (str): Logikai típuscímke, amelyhez a játék logikát köt (pl. "rapid_fire").
-            position (Tuple[int, int]): A sprite középpontjának (x, y) koordinátái pixelben.
-            duration_ms (int): Meddig legyen aktív a power-up, ezredmásodpercben.
-
-        Visszatérés:
-            None
-
-        Kivétel dobása:
-            pygame.error: Ha a képfájl nem tölthető be.
-            FileNotFoundError: Ha az `image_path` nem létezik (platformtól függően).
-            ValueError: Ha `duration_ms` < 0 vagy a `position` nem 2 elemű egészpár.
-        """
+    def __init__(self, image_path: str, powerup_type: str, position: Tuple[int, int], duration_ms: int) -> None:
         super().__init__()
-        self.image = load_powerup_image(image_path)  # Use ui_helper function
+        if duration_ms < 0:
+            raise ValueError("duration_ms nem lehet negatív")
+        self.image = ui.load_powerup_image(image_path)
         self.rect = self.image.get_rect(center=position)
-        self.type = type
+        self.type = powerup_type
         self.spawn_time = pygame.time.get_ticks()
         self.duration = duration_ms
 
     def is_active(self) -> bool:
-        """Jelzi, hogy a power-up még érvényes-e az időzítés alapján.
-
-        Logika:
-            Aktív, ha (aktuális_tick - spawn_time) < duration.
-
-        Paraméterek:
-            Nincs.
-
-        Visszatérés:
-            bool: True, ha a power-up még aktív. Különben False.
-
-        Megjegyzés:
-            Az időzítés a kliens gép `pygame.time.get_ticks()` értékétől függ.
-        """
+        """True, ha (now - spawn_time) < duration."""
         return pygame.time.get_ticks() - self.spawn_time < self.duration
 
-def generate_enemy_positions() -> List[Tuple[int, int]]:
-    """Legenerálja az ellenségek kezdőpozícióit rács alapján.
 
-    Paraméterek:
-        Nincs. A pozíciók a globális ROWS, COLS, OFFSET és PADDING értékekből számolódnak.
+def generate_enemy_positions() -> List[Tuple[int, int]]:
+    """Ellenség kezdőpozíciók rács alapján.
+
+    Számítás:
+        Bal-felső sarok koordináták ROWS×COLS rácsra, a `config`-ban megadott
+        offsetekkel és paddinggel. Egy cella 20 px alapszélességgel számol.
 
     Visszatérés:
-        List[Tuple[int,int]]: Bal-felső sarok koordináták listája pixelben.
+        List[Tuple[int,int]]: Pozíciók listája pixelben (bal, felső).
     """
     return [
-        (ENEMY_OFFSET_X + col * (20 + ENEMY_PADDING_X),
-         ENEMY_OFFSET_Y + row * (20 + ENEMY_PADDING_Y))
-        for row in range(ROWS) for col in range(COLS)
+        (cfg.ENEMY_OFFSET_X + col * (20 + cfg.ENEMY_PADDING_X),
+         cfg.ENEMY_OFFSET_Y + row * (20 + cfg.ENEMY_PADDING_Y))
+        for row in range(cfg.ROWS) for col in range(cfg.COLS)
     ]
 
+
 def move_player(rect: pygame.Rect, keys: Any, ai_action: Optional[Action] = None) -> None:
-    """Mozgatja a játékost billentyűzettel vagy AI utasítással.
+    """Játékos mozgatása billentyűről vagy AI utasítás alapján.
 
     Paraméterek:
-        rect (pygame.Rect): A játékos ütköződoboza. Helyben módosul.
-        keys (obj): `pygame.key.get_pressed()` eredménye vagy azzal kompatibilis.
-        ai_action (Optional[Action]): AI döntés. Ha meg van adva és tartalmaz `move`-ot,
-            felülírja a billentyűzetet.
-
-    Visszatérés:
-        None
+        rect: A játékos rect-je. Helyben módosul.
+        keys: `pygame.key.get_pressed()` eredménye vagy ezzel kompatibilis objektum.
+        ai_action: Ha megadott és tartalmaz `move`-ot, felülírja a billentyűzetet.
 
     Mellékhatás:
-        A `rect` koordinátái és a globális képernyőhatárokhoz igazítás.
+        - A `rect` koordinátái módosulnak.
+        - A képernyőszélekhez igazítás történik (0..WIDTH/HEIGHT).
     """
     if ai_action and ai_action["move"]:
         mv = ai_action["move"]
         if mv in ("left", "right"):
-            rect.x += PLAYER_SPEED * (-1 if mv == "left" else 1)
+            rect.x += cfg.PLAYER_SPEED * (-1 if mv == "left" else 1)
         elif mv in ("down", "retreat"):
-            rect.y += PLAYER_SPEED
+            rect.y += cfg.PLAYER_SPEED
     else:
         if keys and keys[pygame.K_LEFT]:
-            rect.x -= PLAYER_SPEED
+            rect.x -= cfg.PLAYER_SPEED
         if keys and keys[pygame.K_RIGHT]:
-            rect.x += PLAYER_SPEED
+            rect.x += cfg.PLAYER_SPEED
         if keys and keys[pygame.K_DOWN]:
-            rect.y += PLAYER_SPEED
+            rect.y += cfg.PLAYER_SPEED
 
     rect.left = max(rect.left, 0)
-    rect.right = min(rect.right, WIDTH)
+    rect.right = min(rect.right, cfg.WIDTH)
     rect.top = max(rect.top, 0)
-    rect.bottom = min(rect.bottom, HEIGHT)
+    rect.bottom = min(rect.bottom, cfg.HEIGHT)
+
 
 def move_bullets(bullets: List[List[int]]) -> None:
-    """Felfelé mozgatja a játékos lövedékeit és kilistázza a képernyőn kívülieket.
+    """Játékos lövedékeinek felfelé mozgatása és képernyőn kívüliek szűrése.
 
     Paraméterek:
-        bullets (List[List[int]]): [x, y] párok listája. Helyben módosul.
-
-    Visszatérés:
-        None
+        bullets: [x, y] párok listája. Helyben módosul.
     """
     for b in bullets:
-        b[1] -= BULLET_SPEED
+        b[1] -= cfg.BULLET_SPEED
     bullets[:] = [b for b in bullets if b[1] > 0]
+
 
 def create_enemies(enemy_img: pygame.Surface, all_positions: List[Tuple[int, int]],
                    count: int, speed_multiplier: float = 1.0) -> List[Dict[str, Any]]:
-    """Létrehozza az ellenségek listáját véletlen mérettel és színnel.
+    """Ellenség példányok létrehozása véletlen méret- és szín-paraméterekkel.
 
     Paraméterek:
-        enemy_img (pygame.Surface): Bázis sprite, amelyből méretezünk és színezünk.
-        all_positions (List[Tuple[int,int]]): Elérhető kezdőpozíciók.
-        count (int): Létrehozandó ellenségek száma.
-        speed_multiplier (float): Sebességszorzó a szint nehezítéséhez.
+        enemy_img: Alap sprite, amelyből skálázunk és színezünk.
+        all_positions: Lehetséges kezdőpozíciók.
+        count: Létrehozandó ellenségek száma.
+        speed_multiplier: Sebességszorzó a nehézséghez.
 
     Visszatérés:
-        List[Dict[str,Any]]: Minden elem kulcsai:
-            - "rect" (pygame.Rect): aktuális hely
-            - "speed" (float): alap sebesség (nem minden ág használja)
-            - "image" (pygame.Surface): aktuális, színezett sprite
-            - "float_x" (float), "float_y" (float): subpixel pozíciók
+        List[Dict[str,Any]]: Minden elem tartalmazza:
+            - "rect" (pygame.Rect)
+            - "speed" (float)
+            - "image" (pygame.Surface) – színezett sprite
+            - "float_x", "float_y" (float) – subpixel pozíciók
 
     Megjegyzés:
-        A színezés per-pixel történik. Cache-eléssel gyorsítható.
+        A színezés cache-elve van a teljesítmény miatt.
     """
-    random.shuffle(all_positions)
+    positions = all_positions[:]  # bemeneti lista nem módosul
+    random.shuffle(positions)
     enemies: List[Dict[str, Any]] = []
-    for pos in all_positions[:count]:
+    for pos in positions[:count]:
         size = random.randint(20, 40)
-        scaled_img = pygame.transform.smoothscale(enemy_img, (size, size))
-        color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-        tinted_img = tint_image(scaled_img, color)
+        color = (
+            random.randint(50, 255),
+            random.randint(50, 255),
+            random.randint(50, 255),
+        )
+        tinted_img = _tinted(enemy_img, size, size, color)
         rect = tinted_img.get_rect(topleft=pos)
         speed = random.uniform(1.0, 2.0) * speed_multiplier
         enemies.append({
@@ -196,112 +235,110 @@ def create_enemies(enemy_img: pygame.Surface, all_positions: List[Tuple[int, int
         })
     return enemies
 
+
 def reset_level(player_rect: pygame.Rect, bullets: List[List[int]],
                 enemies: List[Dict[str, Any]], all_positions: List[Tuple[int, int]],
                 level_data: Dict[str, Any], same_level: bool = False) -> None:
-    """Újraindítja a szintet ellenségekkel és játékossal.
+    """Szint újraindítása.
+
+    Viselkedés:
+        - Ha `same_level=False`, növeli a szintet és az ellenségszámot.
+        - Újragenerálja az ellenségeket.
+        - Kiüríti a lövedékeket.
+        - Játékost visszateszi az alsó középre.
+        - Sebességet újraszámolja.
 
     Paraméterek:
-        player_rect (pygame.Rect): Játékos rect. Kezdőpontra állítódik.
-        bullets (List[List[int]]): Lövedékek listája. Kiürül.
-        enemies (List[Dict]): Ellenségek listája. Újragenerálódik.
-        all_positions (List[Tuple[int,int]]): Potenciális ellenségpozíciók.
-        level_data (Dict[str,Any]): Állapot: "level", "enemy_count", "speed_multiplier",
-            "enemy_img", "dx" stb. Helyben módosul.
-        same_level (bool): Ha True, a szintszám és enemy_count nem nő.
-
-    Visszatérés:
-        None
+        player_rect, bullets, enemies, all_positions, level_data: Állapotobjektumok.
+        same_level: Ha True, nem nő a szintszám és az ellenségszám.
     """
     if not same_level:
         level_data["level"] += 1
         level_data["enemy_count"] += 2
-    enemies[:] = create_enemies(level_data["enemy_img"], all_positions, level_data["enemy_count"], level_data["speed_multiplier"])
+    enemies[:] = create_enemies(
+        level_data["enemy_img"],
+        all_positions,
+        level_data["enemy_count"],
+        level_data["speed_multiplier"],
+    )
     bullets.clear()
-    player_rect.midbottom = (WIDTH // 2, HEIGHT - 50)
+    player_rect.midbottom = (cfg.WIDTH // 2, cfg.HEIGHT - 50)
     level_data["dx"] = 2 * level_data["speed_multiplier"]
 
+
 def spawn_powerup(powerups: pygame.sprite.Group) -> None:
-    """Véletlenszerűen új power-upot spawnol.
-
-    Paraméterek:
-        powerups (pygame.sprite.Group): Cél csoport, ide kerül az új power-up.
-
-    Visszatérés:
-        None
+    """Véletlenszerű 'star' power-up spawn.
 
     Logika:
-        Ha nincs aktív power-up és `random()<0.001`, akkor "star" típusú power-upot hoz létre.
+        Ha nincs aktív power-up és `random() < 0.001`, akkor létrejön egy 4s élettartamú
+        "star" típusú power-up a képernyő belső tartományában.
+
+    Paraméterek:
+        powerups: Cél sprite-csoport.
     """
     if len(powerups) == 0 and random.random() < 0.001:
-        pos = (random.randint(50, WIDTH - 50), random.randint(50, HEIGHT - 150))
+        pos = (random.randint(50, cfg.WIDTH - 50), random.randint(50, cfg.HEIGHT - 150))
         powerup = PowerUp("star.png", "star", pos, 4000)
         powerups.add(powerup)
 
+
 def update_shoot_delay(player_powerups: Dict[str, int]) -> int:
-    """Visszaadja az aktuális lövési késleltetést a power-upok függvényében.
+    """Aktuális lövési késleltetés ms-ban, power-upok figyelembevételével.
+
+    Viselkedés:
+        - Ha "star" aktív az elmúlt 4s-ben → `cfg.POWERUP_SHOOT_DELAY`.
+        - Lejárt "star" eltávolítása a dict-ből.
 
     Paraméterek:
-        player_powerups (Dict[str,int]): Power-up aktiválási idők `pygame.time.get_ticks()` alapján.
+        player_powerups: Aktivált power-upok időbélyegei.
 
     Visszatérés:
-        int: Lövési késleltetés ms-ban.
-
-    Mellékhatás:
-        Lejárt "star" bejegyzés törlődik a szótárból.
+        int: Késleltetés ms.
     """
     if "star" in player_powerups:
         if pygame.time.get_ticks() - player_powerups["star"] < 4000:
-            return POWERUP_SHOOT_DELAY
+            return cfg.POWERUP_SHOOT_DELAY
         else:
             del player_powerups["star"]
-    return BASE_SHOOT_DELAY
+    return cfg.BASE_SHOOT_DELAY
+
 
 def handle_shooting(keys: Any, bullets: List[List[int]], player_rect: pygame.Rect,
                     current_time: int, level_data: Dict[str, Any], shoot_delay: int,
                     ai_action: Optional[Action] = None) -> None:
-    """Kezeli a lövést billentyűzetről vagy AI-ból.
+    """Lövés kezelése billentyűzetről vagy AI-ból, késleltetéssel.
 
     Paraméterek:
         keys: `pygame.key.get_pressed()` eredménye, vagy None AI módban.
-        bullets (List[List[int]]): Lövedékek listája. Bővülhet.
-        player_rect (pygame.Rect): Játékos rect. Felső élről indul a lövedék.
-        current_time (int): `pygame.time.get_ticks()`.
-        level_data (Dict[str,Any]): Tartalmazza a "last_shot_time" kulcsot.
-        shoot_delay (int): Késleltetés ms-ban két lövés között.
-        ai_action (Optional[Action]): AI döntés. Ha `shoot` True, az lövést kér.
-
-    Visszatérés:
-        None
+        bullets: Lövedéklista. Bővülhet.
+        player_rect: A lövedék a játékos tetejéről indul.
+        current_time: `pygame.time.get_ticks()`.
+        level_data: Tartalmazza a "last_shot_time"-ot.
+        shoot_delay: Min. idő két lövés között.
+        ai_action: Ha `shoot=True`, akkor lövés kérés AI-ból.
     """
     should_shoot = False
 
-    # AI lövés
     if ai_action and ai_action.get("shoot", False):
         should_shoot = True
-    # Billentyű lövés (csak ha keys nem None!)
     elif keys and keys[pygame.K_SPACE]:
         should_shoot = True
 
-    # Ha tényleg lőni kell és letelt a késleltetés
     if should_shoot and current_time - level_data["last_shot_time"] > shoot_delay:
         bullets.append([player_rect.centerx, player_rect.top])
         level_data["last_shot_time"] = current_time
 
+
 def handle_bullet_collisions(bullets: List[List[int]], enemies: List[Dict[str, Any]],
                              powerups: pygame.sprite.Group, score: int,
                              player_powerups: Dict[str, int]) -> int:
-    """Kezeli a lövedékek ütközéseit ellenségekkel és power-upokkal.
+    """Lövedékek ütközése ellenségekkel és power-upokkal.
 
     Paraméterek:
-        bullets (List[List[int]]): Játékos lövedékei. Találat esetén törlődnek.
-        enemies (List[Dict]): Ellenségek listája. Találat esetén törlődnek.
-        powerups (pygame.sprite.Group): Power-up sprite-ok. Találat esetén felvétel.
-        score (int): Aktuális pontszám.
-        player_powerups (Dict[str,int]): Aktivált power-upok időbélyegei.
+        bullets, enemies, powerups, score, player_powerups
 
     Visszatérés:
-        int: Frissített pontszám (+10 ellenségenként).
+        int: Új pontszám (+10 minden kilőtt ellenségért).
     """
     for bullet in bullets[:]:
         for powerup in powerups:
@@ -320,50 +357,37 @@ def handle_bullet_collisions(bullets: List[List[int]], enemies: List[Dict[str, A
                     break
     return score
 
+
 def remove_expired_powerups(powerups: pygame.sprite.Group) -> None:
-    """Eltávolítja a lejárt power-upokat a sprite-csoportból.
-
-    Paraméterek:
-        powerups (pygame.sprite.Group): Forrás csoport.
-
-    Visszatérés:
-        None
-    """
+    """Lejárt power-upok eltávolítása a csoportból."""
     for powerup in list(powerups):
         if not powerup.is_active():
             powerups.remove(powerup)
 
+
 def collect_powerups(player_rect: pygame.Rect, powerups: pygame.sprite.Group,
                      player_powerups: Dict[str, int]) -> None:
-    """Begyűjt minden power-upot, amellyel a játékos rect-je átfed.
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos ütköződoboza.
-        powerups (pygame.sprite.Group): Elérhető power-upok.
-        player_powerups (Dict[str,int]): Aktivált power-upok időbélyegei. Bővülhet.
-
-    Visszatérés:
-        None
-    """
+    """Összegyűjti a játékossal átfedő power-upokat, és időbélyeget rögzít."""
     for powerup in list(powerups):
         if player_rect.colliderect(powerup.rect):
             player_powerups[powerup.type] = pygame.time.get_ticks()
             powerups.remove(powerup)
 
+
 def move_enemies(enemies: List[Dict[str, Any]], level_data: Dict[str, Any], player_rect: pygame.Rect) -> None:
-    """Mozgatja az ellenségeket a játékos pozíciójához viszonyítva, ugrásokkal és követéssel.
+    """Ellenségek mozgatása ugrásokkal és követéssel. Színkódolás távolság szerint.
 
     Paraméterek:
-        enemies (List[Dict]): Ellenség-állapotok listája. Elemek helyben módosulnak.
-        level_data (Dict[str,Any]): Tartalmazza az "enemy_img"-et az újraszínezéshez.
-        player_rect (pygame.Rect): Játékos helyzete.
-
-    Visszatérés:
-        None
+        enemies: Ellenség-állapotok listája. Helyben módosul.
+        level_data: Tartalmazza az "enemy_img"-et a friss sprite készítéshez.
+        player_rect: A játékos helyzete.
 
     Megjegyzés:
-        A függvény minden lépésben újraszínezi a sprite-ot a távolság alapján
-        (piros-közeli, sárga-közepes, zöld-távoli).
+        A sprite minden frame-ben újraszíneződik három kategóriára:
+            - közeli: piros
+            - közepes: sárga
+            - távoli: zöld
+        A színezett felületek cache-elve vannak.
     """
     enemy_speed_x = 1.2
     enemy_speed_y = 0.5
@@ -383,10 +407,7 @@ def move_enemies(enemies: List[Dict[str, Any]], level_data: Dict[str, Any], play
                 enemy["float_x"] += random.choice([-jump_distance, jump_distance])
                 enemy["float_y"] += random.choice([-jump_distance, jump_distance])
         elif random.random() < jump_chance_far:
-            if random.choice([True, False]):
-                enemy["float_x"] -= jump_distance
-            else:
-                enemy["float_x"] += jump_distance
+            enemy["float_x"] += (-jump_distance if random.choice([True, False]) else jump_distance)
             enemy["float_y"] += enemy_speed_y
         else:
             if distance > threshold:
@@ -398,47 +419,33 @@ def move_enemies(enemies: List[Dict[str, Any]], level_data: Dict[str, Any], play
 
         enemy_width = enemy["rect"].width
         enemy_height = enemy["rect"].height
-        enemy["float_x"] = max(0, min(WIDTH - enemy_width, enemy["float_x"]))
-        enemy["float_y"] = max(0, min(HEIGHT - enemy_height, enemy["float_y"]))
+        enemy["float_x"] = max(0, min(cfg.WIDTH - enemy_width, enemy["float_x"]))
+        enemy["float_y"] = max(0, min(cfg.HEIGHT - enemy_height, enemy["float_y"]))
 
         enemy["rect"].x = int(enemy["float_x"])
         enemy["rect"].y = int(enemy["float_y"])
 
         if distance < 100:
-            color = (255, 0, 0)        # közeli
+            color = (255, 0, 0)
         elif distance <= 250:
-            color = (255, 255, 0)      # közepes
+            color = (255, 255, 0)
         else:
-            color = (0, 255, 0)        # távoli
+            color = (0, 255, 0)
 
-        base_img = pygame.transform.smoothscale(level_data["enemy_img"], (enemy_width, enemy_height))
-        enemy["image"] = tint_image(base_img, color)
+        enemy["image"] = _tinted(level_data["enemy_img"], enemy_width, enemy_height, color)
+
 
 def check_player_collision(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]) -> bool:
-    """Eldönti, hogy a játékos ütközik-e bármely ellenséggel.
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos ütköződoboza.
-        enemies (List[Dict]): Ellenségek listája.
-
-    Visszatérés:
-        bool: True, ha bármely ellenség rect-je metszi a játékos rect-jét.
-    """
+    """True, ha bármely ellenség rect-je metszi a játékos rect-jét."""
     return any(enemy["rect"].colliderect(player_rect) for enemy in enemies)
 
+
 def _log_throttled(msg: str, action: Action) -> None:
-    """Időkorláttal és állapotváltozásra szűrve kiír debug üzeneteket.
+    """Throttlingos debug log. Új üzenet csak akkor, ha eltelt min. idő és változott az akció.
 
     Paraméterek:
-        msg (str): Kiírandó üzenet.
-        action (Action): Az aktuális AI akció. Csak akkor logol, ha az előzőtől eltér.
-
-    Visszatérés:
-        None
-
-    Megjegyzés:
-        Csak akkor aktív, ha DEBUG=True. Minimum LOG_EVERY_MS idő teljen el
-        és változzon az `action`.
+        msg: Kiírandó szöveg.
+        action: Aktuális akció.
     """
     global _last_log, _last_action
     if not DEBUG:
@@ -449,56 +456,36 @@ def _log_throttled(msg: str, action: Action) -> None:
         _last_log = now
         _last_action = dict(action)
 
+
 def _nearest_star(player_rect: pygame.Rect, powerups: pygame.sprite.Group) -> Optional[PowerUp]:
-    """Visszaadja a játékoshoz vízszintesen legközelebbi 'star' power-upot.
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos helyzete.
-        powerups (pygame.sprite.Group): Elérhető power-upok.
-
-    Visszatérés:
-        Optional[PowerUp]: A legközelebbi 'star', vagy None ha nincs.
-    """
+    """Vízszintesen legközelebbi 'star' power-up visszaadása, vagy None."""
     stars = [p for p in powerups if getattr(p, "type", None) == "star"]
     if not stars:
         return None
     return min(stars, key=lambda p: abs(p.rect.centerx - player_rect.centerx))
 
+
 def _enemy_metrics(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]
                    ) -> Tuple[Optional[Dict[str, Any]], Optional[float], Optional[float]]:
-    """Kiszámolja a legközelebbi ellenségre a vízszintes eltérést és a távolságot.
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos helyzete.
-        enemies (List[Dict]): Ellenségek listája.
+    """Legközelebbi ellenség, vízszintes eltérés és távolság meghatározása.
 
     Visszatérés:
-        Tuple[enemy, dx, dist]:
-            enemy (dict|None): Legközelebbi ellenség állapota vagy None.
-            dx (float|None): Vízszintes különbség pixelekben (enemy_x - player_x).
-            dist (float|None): Euklideszi távolság pixelekben.
+        (enemy, dx, dist): enemy lehet None; dx és dist float vagy None.
     """
     if not enemies:
         return None, None, None
-    e = min(enemies, key=lambda en: ((en["rect"].centerx - player_rect.centerx) ** 2 +
-                                     (en["rect"].centery - player_rect.centery) ** 2) ** 0.5)
+    e = min(
+        enemies,
+        key=lambda en: ((en["rect"].centerx - player_rect.centerx) ** 2 +
+                        (en["rect"].centery - player_rect.centery) ** 2) ** 0.5
+    )
     dx = e["rect"].centerx - player_rect.centerx
     dist = (dx ** 2 + (e["rect"].centery - player_rect.centery) ** 2) ** 0.5
     return e, float(dx), float(dist)
 
+
 def _decide_move_attack(dx: float, dist: float) -> Optional[str]:
-    """Meghatározza a támadó mozgásirányt a célhoz képest.
-
-    Paraméterek:
-        dx (float): Cél vízszintes eltérése. Negatív: cél balra.
-        dist (float): Távolság a céltól.
-
-    Visszatérés:
-        Optional[str]: "left" | "right" vagy None, ha nem kell mozogni.
-
-    Mellékhatás:
-        Frissíti a globális `last_move_direction` értéket.
-    """
+    """Támadó mozgásirány kiválasztása a célhoz képest. Frissíti a globális irányt."""
     global last_move_direction
     if dist < 120:
         mv = "left" if dx > 0 else "right"
@@ -513,29 +500,27 @@ def _decide_move_attack(dx: float, dist: float) -> Optional[str]:
             return "right"
     return None
 
-def aligned_for_shot(player_rect: pygame.Rect, target_rect: pygame.Rect, extra: int = AIM_EXTRA) -> bool:
-    """Igaz, ha a játékos középvonala a cél hit-box folyosójában van.
 
-    A folyosó: [target.left - slack, target.right + slack],
-    ahol slack = BULLET_RADIUS + extra + target.width//4 (kicsi sprite-oknál is találjon).
+def aligned_for_shot(player_rect: pygame.Rect, target_rect: pygame.Rect, extra: int = cfg.AIM_EXTRA) -> bool:
+    """True, ha a játékos középvonala a cél hit-box „folyosójában” van.
+
+    Folyosó:
+        [target.left - slack, target.right + slack],
+        ahol slack = BULLET_RADIUS + extra + target.width//4.
     """
-    slack = BULLET_RADIUS + extra + (target_rect.width // 4)
+    slack = cfg.BULLET_RADIUS + extra + (target_rect.width // 4)
     return (target_rect.left - slack) <= player_rect.centerx <= (target_rect.right + slack)
+
 
 def decide_action(player_rect: pygame.Rect, enemies: List[Dict[str, Any]],
                   powerups: pygame.sprite.Group) -> Action:
-    """AI döntés: mozgás és lövés meghatározása ellenfél és power-upok alapján.
+    """Szabály-alapú AI döntés mozgásra és lövésre.
 
-    Prioritások:
-        1) Ha van közeli 'star', kövesd és próbálj rálőni.
-        2) Ha ellenség túl közel (<150), hátrálj, és ha középen van, lőj.
-        3) Egyébként igazodj vízszintben a célhoz, és ha közel középen van, lőj.
-        4) Ha nincs döntés, tartsd az utolsó irányt.
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos helyzete.
-        enemies (List[Dict]): Ellenségek listája.
-        powerups (pygame.sprite.Group): Power-upok.
+    Prioritás:
+        1) Közeli 'star' → igazodás és lövés.
+        2) Ellenség túl közel (<150) → hátrálás, ha igazított, akkor lövés.
+        3) Egyébként vízszintes igazítás, találatkor lövés.
+        4) Ha nincs döntés, marad az utolsó irány.
 
     Visszatérés:
         Action: {"move": Optional[str], "shoot": bool}
@@ -570,56 +555,50 @@ def decide_action(player_rect: pygame.Rect, enemies: List[Dict[str, Any]],
         _log_throttled(f"Enemy decision, d={dist:.1f}, dx={dx:.1f}, action: {action}", action)
     return action
 
+
 def enemy_breached_player_row(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]) -> bool:
-    """Igaz, ha bármely ellenfél elérte/átlépte a játékos felső élét (sorát).
+    """True, ha bármely ellenfél elérte/átlépte a játékos felső élét.
 
-    Logika:
-        Ha bármely ellenség rect.bottom >= player_rect.top, akkor betört a játékos sorába,
-        ami azonnali életvesztést eredményez (Space Invaders-szerű szabály).
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos ütköződoboza.
-        enemies (List[Dict[str,Any]]): Ellenségek listája (rect kulccsal).
-
-    Visszatérés:
-        bool: True, ha van sorátlépés, különben False.
-
-    Kivétel dobása:
-        Nincs.
+    Szabály:
+        Ha `enemy.rect.bottom >= player_rect.top`, akkor sorátlépés történt.
     """
     top_line = player_rect.top
     return any(e["rect"].bottom >= top_line for e in enemies)
 
-def update_game_state(keys, player_rect, bullets, enemies, all_positions,
-                      level_data, lives, score, powerups, player_powerups,
-                      ai_mode, external_ai_action=None, player: str = "Player"):
-    """Egy frame állapotfrissítése: mozgás, lövés, ütközéskezelés, szintváltás.
+
+def update_game_state(keys,
+                      player_rect: pygame.Rect,
+                      bullets: List[List[int]],
+                      enemies: List[Dict[str, Any]],
+                      all_positions: List[Tuple[int, int]],
+                      level_data: Dict[str, Any],
+                      lives: int,
+                      score: int,
+                      powerups: pygame.sprite.Group,
+                      player_powerups: Dict[str, int],
+                      ai_mode: bool,
+                      external_ai_action: Optional[Action] = None,
+                      player: str = "Player") -> Tuple[int, bool, int]:
+    """Egy frame állapotfrissítése: mozgás, lövés, ütközések, szintváltás.
 
     Paraméterek:
         keys: `pygame.key.get_pressed()` eredménye.
-        player_rect (pygame.Rect): Játékos pozíciója.
-        bullets (List[List[int]]): Játékos lövedékei. Helyben módosulnak.
-        enemies (List[Dict]): Ellenségek. Helyben módosulnak.
-        all_positions (List[Tuple[int,int]]): Ellenség spawn helyek.
-        level_data (Dict[str,Any]): Állapot (enemy_img, enemy_count, speed_multiplier,
-            last_shot_time, dx, level, stb.).
-        lives (int): Játékos életeinek száma.
-        score (int): Pontszám.
-        powerups (pygame.sprite.Group): Power-up objektumok.
-        player_powerups (Dict[str,int]): Aktivált power-upok és időbélyegeik.
-        ai_mode (bool): Ha True, AI vezérli a játékost.
-        external_ai_action (Optional[Action]): Külső AI döntés. Ha meg van adva,
-            felülírja a belső `decide_action` logikát.
-        player (str): Játékos neve a pontszám mentéséhez.
+        player_rect (pygame.Rect)
+        bullets (List[List[int]])
+        enemies (List[Dict])
+        all_positions (List[Tuple[int,int]])
+        level_data (Dict[str,Any]): "enemy_img", "enemy_count", "speed_multiplier",
+            "last_shot_time", "dx", "level".
+        lives (int)
+        score (int)
+        powerups (pygame.sprite.Group)
+        player_powerups (Dict[str,int])
+        ai_mode (bool)
+        external_ai_action (Optional[Action])
+        player (str): Játékos név (jelenleg csak naplózáshoz használható).
 
     Visszatérés:
         Tuple[int, bool, int]: (lives, game_over, score)
-            - lives (int): Frissített életek
-            - game_over (bool): True, ha elfogytak az életek
-            - score (int): Frissített pontszám
-
-    Mellékhatás:
-        Listák és dict-ek helyben frissülnek. Szint resetelődhet.
     """
     current_time = pygame.time.get_ticks()
     ai_action = external_ai_action if ai_mode else None
@@ -636,11 +615,10 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions,
     collect_powerups(player_rect, powerups, player_powerups)
     move_enemies(enemies, level_data, player_rect)
 
-    SAFE_BASELINE = HEIGHT - 50
+    SAFE_BASELINE = cfg.HEIGHT - 50
     if ai_mode and player_rect.bottom > SAFE_BASELINE:
         player_rect.y -= 1
 
-    # ÚJ: ha az ellenfél elérte a játékos sorát, azonnal életvesztés és reset
     if enemy_breached_player_row(player_rect, enemies):
         lives -= 1
         reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
@@ -652,67 +630,67 @@ def update_game_state(keys, player_rect, bullets, enemies, all_positions,
 
     return lives, lives <= 0, score
 
+
 def closest_enemy_center(player_rect: pygame.Rect, enemies: List[Dict[str, Any]]) -> Optional[Tuple[int, int]]:
-    """Visszaadja a legközelebbi ellenség középpontjának (cx, cy) koordinátáit.
-
-    Paraméterek:
-        player_rect (pygame.Rect): Játékos pozíciója és méretei.
-        enemies (List[Dict]): Ellenségek listája, ahol minden ellenség egy szótár, 
-            amelynek "rect" kulcsa egy pygame.Rect objektum.
-
-    Visszatérés:
-        Optional[Tuple[int, int]]: A legközelebbi ellenség középpontja (cx, cy) 
-            koordináták formájában, vagy None, ha nincs ellenség.
-
-    Mellékhatás:
-        Nincs. A függvény nem módosít semmilyen bemenetet.
-    """
+    """Legközelebbi ellenség középpontja (cx, cy), vagy None, ha nincs ellenség."""
     if not enemies:
         return None
     target = min(enemies, key=lambda e: abs(e["rect"].centerx - player_rect.centerx))
     return target["rect"].centerx, target["rect"].centery
 
-def log_example(dx: float, dy: float, action: int, speed_multiplier: float, enemy_count: int, path: str = "examples.csv") -> None:
-    """Hozzáfűz egy példát (dx, dy, action, speed_multiplier, enemy_count) a megadott CSV fájlhoz.
+
+def log_example(dx: float, dy: float, action: int, speed_multiplier: float, enemy_count: int,
+                path: str = str(Path(cfg.CSV_DIR) / "examples.csv")) -> None:
+    """Tanító példa hozzáfűzése CSV-hez. Fejlécet is ír, ha új fájl.
+
+    Oszlopok:
+        dx, dy, action, speed_multiplier, enemy_count
 
     Paraméterek:
-        dx (float): A legközelebbi ellenség vízszintes távolsága a játékostól (enemy.centerx - player.centerx).
-        dy (float): A legközelebbi ellenség függőleges távolsága a játékostól (enemy.centery - player.centery).
-        action (int): Játékos akciója (0 = balra, 1 = jobbra, 2 = lő).
-        speed_multiplier (float): Az ellenségek sebességszorzója (pl. 0.8, 1.0, 1.3).
-        enemy_count (int): Az aktuális ellenségek száma.
-        path (str): A CSV fájl elérési útja (alapértelmezett: "examples.csv").
-
-    Visszatérés:
-        None
-
-    Mellékhatás:
-        A megadott CSV fájlba új sor kerül, amely tartalmazza a dx, dy, action, speed_multiplier, enemy_count értékeket.
-        Ha a fájl nem létezik vagy üres, a fejléc (dx,dy,action,speed_multiplier,enemy_count) is íródik.
+        dx (float): enemy.centerx - player.centerx
+        dy (float): enemy.centery - player.centery
+        action (int): 0=balra, 1=jobbra, 2=lő
+        speed_multiplier (float)
+        enemy_count (int)
+        path (str): Cél CSV útvonal. Alap: assets/csv/examples.csv
     """
     file_path = Path(path)
     write_header = not file_path.exists() or file_path.stat().st_size == 0
-    with open(file_path, "a", newline="", encoding="utf-8") as f:
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with file_path.open("a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if write_header:
             w.writerow(["dx", "dy", "action", "speed_multiplier", "enemy_count"])
         w.writerow([dx, dy, action, speed_multiplier, enemy_count])
 
+
 def debug_print(*args, **kwargs) -> None:
-    """Feltételes kiírás a terminálra a DEBUG flag alapján.
-
-    Paraméterek:
-        *args: Tetszőleges számú pozicionális argumentum, amelyeket ki szeretnénk írni.
-        **kwargs: Opcionális kulcs-argumentumok, amelyeket a beépített `print` is támogat 
-                  (pl. `sep`, `end`, `file`, `flush`).
-
-    Visszatérés:
-        None
-
-    Mellékhatás:
-        - Ha a globális `DEBUG` értéke True, a függvény ugyanúgy viselkedik, mint a beépített `print`,
-          vagyis a megadott szöveget kiírja a terminálra.
-        - Ha a `DEBUG` False, semmilyen kiírás nem történik.
-    """
+    """Feltételes print a globális DEBUG alapján."""
     if DEBUG:
         print(*args, **kwargs)
+
+
+__all__ = [
+    "Action",
+    "PowerUp",
+    "generate_enemy_positions",
+    "move_player",
+    "move_bullets",
+    "create_enemies",
+    "reset_level",
+    "spawn_powerup",
+    "update_shoot_delay",
+    "handle_shooting",
+    "handle_bullet_collisions",
+    "remove_expired_powerups",
+    "collect_powerups",
+    "move_enemies",
+    "check_player_collision",
+    "aligned_for_shot",
+    "decide_action",
+    "enemy_breached_player_row",
+    "update_game_state",
+    "closest_enemy_center",
+    "log_example",
+    "debug_print",
+]
