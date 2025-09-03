@@ -669,7 +669,6 @@ def debug_print(*args, **kwargs) -> None:
     if DEBUG:
         print(*args, **kwargs)
 
-
 __all__ = [
     "Action",
     "PowerUp",

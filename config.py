@@ -56,6 +56,7 @@ SCOREBOARD_CSV: Path = CSV_DIR / "scoreboard.csv"
 
 # Visszafelé kompatibilis string név (régi kód hivatkozhat rá)
 CSV_PATH: str = str(SCOREBOARD_CSV)
+HIGHSCORE_PATH = "highscore.json"
 
 def screen_size() -> Tuple[int, int]:
     """Visszaadja a képernyő méretét.

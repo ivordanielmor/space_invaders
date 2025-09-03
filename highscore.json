@@ -1,0 +1,60 @@
+{
+  "players": {
+    "Mór": {
+      "best": 830,
+      "games_played": 3,
+      "history": [
+        {
+          "ts": "2025-03-01T19:42:00",
+          "score": 10,
+          "level": 1,
+          "lives_left": 3
+        },
+        {
+          "ts": "2025-09-02T20:13:52",
+          "score": 790,
+          "level": 6,
+          "lives_left": 0
+        },
+        {
+          "ts": "2025-09-02T20:30:49",
+          "score": 830,
+          "level": 6,
+          "lives_left": 0
+        }
+      ],
+      "top_runs": [
+        {
+          "ts": "2025-09-02T20:30:49",
+          "score": 830
+        },
+        {
+          "ts": "2025-09-02T20:13:52",
+          "score": 790
+        },
+        {
+          "ts": "2025-03-01T19:42:00",
+          "score": 10
+        }
+      ]
+    },
+    "Player": {
+      "best": 510,
+      "games_played": 1,
+      "history": [
+        {
+          "ts": "2025-09-02T20:33:03",
+          "score": 510,
+          "level": 5,
+          "lives_left": 0
+        }
+      ],
+      "top_runs": [
+        {
+          "ts": "2025-09-02T20:33:03",
+          "score": 510
+        }
+      ]
+    }
+  }
+}

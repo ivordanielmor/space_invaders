@@ -62,6 +62,11 @@ from helper import (
 # CSV-műveletek (assets/csv átadható, ha a függvények támogatják)
 from csv_helper import init_csv, save_score_if_record, print_top5
 
+# highscore műveletek
+from highscore import (
+     load_highscores, save_highscores, update_highscore
+)
+
 # UI és asset-útvonalak
 import ui_helper as ui
 
@@ -539,9 +544,11 @@ def game_loop(screen: pygame.Surface,
                 lives -= 1
                 if lives <= 0:
                     scores[_mode_key()] = score
-                    print("Végső eredmények (idő előtt):", scores)
+                    print("Végső eredmények:", scores)
 
-                    # Rekord ellenőrzés és mentés assets/csv/scoreboard.csv-be
+                    # JSON highscore frissítése
+                    update_highscore(player_name, score, level_data["level"], lives)
+
                     try:
                         is_record = save_score_if_record(player_name, score, str(cfg.SCOREBOARD_CSV))
                     except TypeError:
@@ -580,6 +587,10 @@ def game_loop(screen: pygame.Surface,
             if not game_over and lives == prev_lives and enemy_breached_player_row(player_rect, enemies):
                 lives -= 1
                 if lives <= 0:
+                    
+                    # JSON highscore frissítése
+                    update_highscore(player_name, score, level_data["level"], lives)
+
                     try:
                        is_record = save_score_if_record(player_name, score, str(cfg.SCOREBOARD_CSV))
                     except TypeError:
@@ -601,6 +612,9 @@ def game_loop(screen: pygame.Surface,
             if ai_mode:
                 scores[_mode_key()] = score
                 print("Végső eredmények:", scores)
+
+            # JSON highscore frissítése
+            update_highscore(player_name, score, level_data["level"], lives)
 
             try:
                 is_record = save_score_if_record(player_name, score, str(cfg.SCOREBOARD_CSV))
