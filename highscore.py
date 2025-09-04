@@ -11,8 +11,14 @@ def load_highscores():
         return {"players": {}}
     try:
         with open(cfg.HIGHSCORE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
+            data = json.load(f)
+            # Ellenőrizzük a struktúrát
+            if not isinstance(data, dict) or "players" not in data:
+                print("Hibás highscore fájl struktúra, újra inicializálás...")
+                return {"players": {}}
+            return data
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        print(f"Hiba a highscore betöltésekor: {e}")
         # Ha sérült a fájl, visszatérünk üres sémával
         return {"players": {}}
 
@@ -20,10 +26,19 @@ def load_highscores():
 def save_highscores(data):
     """Elmenti szépen formázva (UTF-8, indent=2)."""
     try:
+        # Ellenőrizzük, hogy van-e írási jogunk
+        directory = os.path.dirname(cfg.HIGHSCORE_PATH) or "."
+        if not os.access(directory, os.W_OK):
+            print(f"Nincs írási jog a könyvtárban: {directory}")
+            return False
+            
         with open(cfg.HIGHSCORE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"Highscore sikeresen mentve: {cfg.HIGHSCORE_PATH}")
+        return True
     except IOError as e:
         print(f"Hiba a highscore mentésekor: {e}")
+        return False
 
 
 def update_highscore(player_name: str, score: int, level: int = 1, lives_left: int = 0):
@@ -36,7 +51,11 @@ def update_highscore(player_name: str, score: int, level: int = 1, lives_left: i
         level (int): Elért szint (alapértelmezett: 1)
         lives_left (int): Maradt életek száma (alapértelmezett: 0)
     """
+    print(f"update_highscore hívva: {player_name}, {score}, {level}, {lives_left}")
+    
     data = load_highscores()
+    print(f"Betöltött adatok: {data}")
+    
     players = data.setdefault("players", {})
     rec = players.setdefault(player_name, {
         "best": 0,
@@ -72,12 +91,18 @@ def update_highscore(player_name: str, score: int, level: int = 1, lives_left: i
         rec["top_runs"].append({"ts": timestamp, "score": int(score)})
         rec["top_runs"] = sorted(rec["top_runs"], key=lambda r: r["score"], reverse=True)[:3]
 
-    save_highscores(data)
-
-    print(
-        f"Highscore frissítve: {player_name} - {score} pont "
-        f"(szint: {level}, életek: {lives_left}, játszmák: {rec['games_played']})"
-    )
+    print(f"Frissített adatok: {data}")
+    
+    # Mentés
+    success = save_highscores(data)
+    
+    if success:
+        print(
+            f"Highscore frissítve: {player_name} - {score} pont "
+            f"(szint: {level}, életek: {lives_left}, játszmák: {rec['games_played']})"
+        )
+    else:
+        print("HIBA: Nem sikerült menteni a highscore-t!")
 
 
 def get_player_best(player_name: str) -> int:
@@ -131,3 +156,22 @@ def print_highscores():
     print("=== TOP 5 HIGHSCORES ===")
     for i, player in enumerate(top, 1):
         print(f"{i}. {player['name']}: {player['best']} pont")
+
+
+def test_highscore():
+    """Teszt függvény a highscore rendszer működésének ellenőrzéséhez."""
+    print("=== Highscore teszt ===")
+    print(f"HIGHSCORE_PATH: {cfg.HIGHSCORE_PATH}")
+    print(f"Fájl létezik: {os.path.exists(cfg.HIGHSCORE_PATH)}")
+    
+    # Teszt adat
+    update_highscore("TestPlayer", 100, 2, 1)
+    
+    # Ellenőrzés
+    data = load_highscores()
+    print(f"Betöltött adatok teszt után: {data}")
+
+
+if __name__ == "__main__":
+    test_highscore()
+    

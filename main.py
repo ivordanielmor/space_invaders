@@ -488,6 +488,28 @@ def game_loop(screen: pygame.Surface,
         """Aktuális mérési mód kulcsa a scores dict-hez."""
         return "hybrid" if use_hybrid else "ml"
 
+    def _game_over_sequence(final_score: int) -> None:
+        """Game over szekvencia - csak egyszer hívjuk meg!"""
+        print(f"Game Over! Játékos: {player_name}, Pont: {final_score}, Szint: {level_data['level']}")
+        
+        # JSON highscore frissítése - EZ A FONTOS RÉSZ!
+        update_highscore(player_name, final_score, level_data["level"], lives)
+
+        # CSV mentés (ha van)
+        try:
+            is_record = save_score_if_record(player_name, final_score, str(cfg.SCOREBOARD_CSV))
+        except TypeError:
+            is_record = save_score_if_record(player_name, final_score)
+        record_msg = f"{player_name}: {final_score} pont" if is_record else ""
+
+        try:
+            print_top5(str(cfg.SCOREBOARD_CSV))
+        except TypeError:
+            print_top5()
+
+        ui.draw_game_over(screen, is_record, record_msg)
+        pygame.time.wait(5000)
+
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -545,25 +567,8 @@ def game_loop(screen: pygame.Surface,
                 if lives <= 0:
                     scores[_mode_key()] = score
                     print("Végső eredmények:", scores)
-
-                    # JSON highscore frissítése
-                    update_highscore(player_name, score, level_data["level"], lives)
-
-                    try:
-                        is_record = save_score_if_record(player_name, score, str(cfg.SCOREBOARD_CSV))
-                    except TypeError:
-                        is_record = save_score_if_record(player_name, score)
-                    record_msg = f"{player_name}: {score} pont" if is_record else ""
-
-                    try:
-                        print_top5(str(cfg.SCOREBOARD_CSV))
-                    except TypeError:
-                        print_top5()
-
-                    ui.draw_game_over(screen, is_record, record_msg)
-                    pygame.time.wait(5000)
+                    _game_over_sequence(score)
                     return
-
                 reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
 
             # 3 perc után módváltás és teljes reset a méréshez
@@ -587,55 +592,22 @@ def game_loop(screen: pygame.Surface,
             if not game_over and lives == prev_lives and enemy_breached_player_row(player_rect, enemies):
                 lives -= 1
                 if lives <= 0:
-                    
-                    # JSON highscore frissítése
-                    update_highscore(player_name, score, level_data["level"], lives)
-
-                    try:
-                       is_record = save_score_if_record(player_name, score, str(cfg.SCOREBOARD_CSV))
-                    except TypeError:
-                        is_record = save_score_if_record(player_name, score)
-                    record_msg = f"{player_name}: {score} pont" if is_record else ""
-
-                    try:
-                        print_top5(str(cfg.SCOREBOARD_CSV))
-                    except TypeError:
-                        print_top5()
-
-                    ui.draw_game_over(screen, is_record, record_msg)
-                    pygame.time.wait(5000)
+                    _game_over_sequence(score)
                     return
                 reset_level(player_rect, bullets, enemies, all_positions, level_data, same_level=True)
 
-        # Végső game over ág
+        # Végső game over ág - ez kell, hogy kezelje az update_game_state visszaadott game_over-t
         if lives <= 0:
             if ai_mode:
                 scores[_mode_key()] = score
                 print("Végső eredmények:", scores)
-
-            # JSON highscore frissítése
-            update_highscore(player_name, score, level_data["level"], lives)
-
-            try:
-                is_record = save_score_if_record(player_name, score, str(cfg.SCOREBOARD_CSV))
-            except TypeError:
-                is_record = save_score_if_record(player_name, score)
-            record_msg = f"{player_name}: {score} pont" if is_record else ""
-
-            try:
-                print_top5(str(cfg.SCOREBOARD_CSV))
-            except TypeError:
-                print_top5()
-
-            ui.draw_game_over(screen, is_record, record_msg)
-            pygame.time.wait(5000)
+            _game_over_sequence(score)
             return
 
         # Frame kirajzolása
         ui.draw_game(screen, player_img, player_rect, enemies, bullets, powerups,
                      level_data["level"], lives, heart_img, score, ai_mode)
         clock.tick(60)
-
 
 def main() -> None:
     """Belépési pont. Pygame init, ranglista CSV init, menü és játékhurok futtatása.
