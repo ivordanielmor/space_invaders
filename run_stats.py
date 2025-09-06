@@ -1,41 +1,19 @@
-from typing import Optional, Dict, Any
-import config as cfg
 """
 Alap statisztikák készítése a TISZTÍTOTT Space Invaders pontszámokból.
 
 Funkcionalitás:
 - TISZTÍTOTT CSV beolvasása (scoreboard_clean.csv)
-- JSON beolvasása (highscore.json) 
+- Highscore JSON beolvasása és összevetés 
 - Játékosonkénti összegzés: átlag, medián, legjobb, játékszám
-- Gyors áttekintés az eredményekről
-- Top 3 ranglista kiírása emoji-kkal
+- Javulási analízis: első pont vs referencia pont
+- Top 3 ranglista kiírása
 
 Előfeltételek:
 - Előbb fusd le: python run_load_csv.py (tisztítás)
 - Szükséges fájlok: assets/csv/scoreboard_clean.csv, highscore.json
 
-Kimenet:
-- Konzolra írja a statisztikákat
-- CSV és JSON összegzés
-- Játékosonkénti részletes statisztikák
-- Top 3 játékos kiemelése
-
-Hibakezelés:
-- Hiányzó fájlok esetén üres adatokkal folytatja
-- Hiányzó oszlopok ellenőrzése
-- Numerikus konverzió hibák kezelése
-
 Használat:
     python run_stats.py
-
-Példa kimenet:
-    🎮 SPACE INVADERS STATISZTIKÁK
-    📊 Tisztított CSV adatok:
-       - Összes játék: 17
-       - Játékosok száma: 6
-    👥 JÁTÉKOSONKÉNTI STATISZTIKÁK:
-    🥇 Mór: 1690 pont (6 játék)
-    🥈 Player: 510 pont (4 játék)
 """
 
 import pandas as pd
@@ -97,16 +75,17 @@ def calculate_player_stats(df: pd.DataFrame) -> pd.DataFrame:
     stats = df.groupby("player", as_index=False)["score"].agg(
         atlag="mean",
         median="median", 
-        best="max",
-        meresek_szama="count"
+        legjobb="max",
+        jatekok_szama="count"
     )
     
     # Kerekítés az átlagnál és mediánnál
     stats["atlag"] = stats["atlag"].round(1)
     stats["median"] = stats["median"].round(1)
+        
     
     # Rendezés legjobb pontszám szerint
-    stats = stats.sort_values("best", ascending=False)
+    stats = stats.sort_values("legjobb", ascending=False)
     
     return stats
 
@@ -142,13 +121,14 @@ def print_summary(df: pd.DataFrame, json_data: Dict[str, Any], stats: pd.DataFra
         top3 = stats.head(3)
         for i, row in enumerate(top3.itertuples(), 1):
             emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
-            print(f"   {emoji} {row.player}: {row.best} pont ({row.meresek_szama} játék)")
+            print(f"   {emoji} {row.player}: {row.legjobb} pont ({row.jatekok_szama} játék)")
 
 def main() -> Optional[None]:
     """Főfüggvény: betöltés és statisztikák készítése."""
     print("🚀 Statisztikák készítése...")
+    print("MANUAL TEST - ez tényleg az új kód!")
     
-    # Adatok betöltése - HIBAKEZELÉS NÉLKÜL
+    # Adatok betöltése
     df = load_csv_data()
     json_data = load_json_data()
     
@@ -157,6 +137,63 @@ def main() -> Optional[None]:
     
     # Összegzés kiírása
     print_summary(df, json_data, stats)
+    
+    # **2) Highscore JSON beolvasása és összevetés (javulás)**
+    try:
+        # Highscore JSON → 'player' / 'legjobb_json' DataFrame
+        with open("highscore.json", "r", encoding="utf-8") as f:
+            hs = json.load(f)
+
+        players = hs.get("players", {})
+        rows = [{"player": name, "legjobb_json": rec.get("best", 0)} for name, rec in players.items()]
+        hs_df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["player","legjobb_json"])
+
+        # Első mért pont (baseline) CSV-ből: idő szerint rendezve, első pont felvétele
+        if "date" in df.columns:
+            df_sorted = df.sort_values(["player", "date"])
+        else:
+            # Ha nincs date oszlop, használjuk az eredeti sorrendet
+            df_sorted = df.copy()
+            
+        elso_eredmenys = (
+            df_sorted.groupby("player", as_index=False)["score"]
+                     .first()
+                     .rename(columns={"score":"elso_eredmeny"})
+        )
+
+        # Összefésülés és javulás számítás
+        merged = (stats
+                  .merge(hs_df, on="player", how="left")
+                  .merge(elso_eredmenys, on="player", how="left"))
+
+        merged["referencia_legjobb"] = merged["legjobb_json"].fillna(merged["legjobb"])
+        merged["javulas"]    = merged["referencia_legjobb"] - merged["elso_eredmeny"]
+
+        print("\nÖsszevetés és javulás:\n",
+            merged[["player","elso_eredmeny","referencia_legjobb","javulas","atlag","median"]])
+        
+        # **Top N listák mentése**
+        TOP_N = 3
+        top_javulas = merged.sort_values("javulas", ascending=False).head(TOP_N)
+        top_legjobb = merged.sort_values("referencia_legjobb", ascending=False).head(TOP_N)
+
+        # Magyar oszlopnevek a mentéshez
+        top_javulas_hu = top_javulas.rename(columns={"player": "jatekos"})
+        top_legjobb_hu = top_legjobb.rename(columns={"player": "jatekos"})
+
+        # Könyvtár ellenőrzése és mentés az assets/csv mappába
+        import os
+        os.makedirs("assets/csv", exist_ok=True)
+        
+        top_javulas_hu.to_csv("assets/csv/top_javulas.csv", index=False, encoding="utf-8")
+        top_legjobb_hu.to_csv("assets/csv/top_legjobb.csv", index=False, encoding="utf-8")
+
+        print("Mentve: assets/csv/top_javulas.csv, assets/csv/top_legjobb.csv")
+              
+    except FileNotFoundError:
+        print("\n❌ highscore.json nem található - javulási analízis kihagyva")
+    except Exception as e:
+        print(f"\n❌ Hiba a javulási analízis során: {e}")
     
     print(f"\n✅ Statisztikák elkészültek!")
 
