@@ -6,7 +6,9 @@ Funkcionalitás:
 - Highscore JSON beolvasása és összevetés 
 - Játékosonkénti összegzés: átlag, medián, legjobb, játékszám
 - Javulási analízis: első pont vs referencia pont
-- Top 3 ranglista kiírása
+- Top 5 listák mentése CSV és HTML formátumban
+- Szint kategorizálás (Bronz/Ezüst/Arany)
+- Javulási összefoglaló
 
 Előfeltételek:
 - Előbb fusd le: python run_load_csv.py (tisztítás)
@@ -71,7 +73,7 @@ def calculate_player_stats(df: pd.DataFrame) -> pd.DataFrame:
     df["score"] = pd.to_numeric(df["score"], errors="coerce")
     df = df.dropna(subset=["score"])
     
-    # Statisztikák számítása
+    # Statisztikák számítása - MAGYAR OSZLOPNEVEK
     stats = df.groupby("player", as_index=False)["score"].agg(
         atlag="mean",
         median="median", 
@@ -82,7 +84,6 @@ def calculate_player_stats(df: pd.DataFrame) -> pd.DataFrame:
     # Kerekítés az átlagnál és mediánnál
     stats["atlag"] = stats["atlag"].round(1)
     stats["median"] = stats["median"].round(1)
-        
     
     # Rendezés legjobb pontszám szerint
     stats = stats.sort_values("legjobb", ascending=False)
@@ -110,11 +111,16 @@ def print_summary(df: pd.DataFrame, json_data: Dict[str, Any], stats: pd.DataFra
         if "highscore" in json_data:
             print(f"   - Jelenlegi rekord: {json_data['highscore']}")
     
-    # Játékosonkénti statisztikák
+    # Játékosonkénti statisztikák MAGYAR OSZLOPNEVEKKEL
     if not stats.empty:
+        # Magyar oszlopnevekkel való másolat készítése a megjelenítéshez
+        stats_hu = stats.rename(columns={
+            "player": "jatekos"
+        })
+        
         print(f"\n👥 JÁTÉKOSONKÉNTI STATISZTIKÁK:")
         print("-" * 50)
-        print(stats.to_string(index=False))
+        print(stats_hu.to_string(index=False))
         
         # Top 3 játékos kiemelése
         print(f"\n🏆 TOP 3 JÁTÉKOS:")
@@ -126,7 +132,6 @@ def print_summary(df: pd.DataFrame, json_data: Dict[str, Any], stats: pd.DataFra
 def main() -> Optional[None]:
     """Főfüggvény: betöltés és statisztikák készítése."""
     print("🚀 Statisztikák készítése...")
-    print("MANUAL TEST - ez tényleg az új kód!")
     
     # Adatok betöltése
     df = load_csv_data()
@@ -155,7 +160,7 @@ def main() -> Optional[None]:
             # Ha nincs date oszlop, használjuk az eredeti sorrendet
             df_sorted = df.copy()
             
-        elso_eredmenys = (
+        first_scores = (
             df_sorted.groupby("player", as_index=False)["score"]
                      .first()
                      .rename(columns={"score":"elso_eredmeny"})
@@ -164,31 +169,74 @@ def main() -> Optional[None]:
         # Összefésülés és javulás számítás
         merged = (stats
                   .merge(hs_df, on="player", how="left")
-                  .merge(elso_eredmenys, on="player", how="left"))
+                  .merge(first_scores, on="player", how="left"))
 
         merged["referencia_legjobb"] = merged["legjobb_json"].fillna(merged["legjobb"])
-        merged["javulas"]    = merged["referencia_legjobb"] - merged["elso_eredmeny"]
+        merged["javulas"] = merged["referencia_legjobb"] - merged["elso_eredmeny"]
+
+        # Magyar oszlopnevek a végső táblázathoz
+        merged_hu = merged.rename(columns={
+            "player": "jatekos"
+        })
 
         print("\nÖsszevetés és javulás:\n",
-            merged[["player","elso_eredmeny","referencia_legjobb","javulas","atlag","median"]])
+              merged_hu[["jatekos","elso_eredmeny","referencia_legjobb","javulas","atlag","median"]])
         
-        # **Top N listák mentése**
-        TOP_N = 3
+        # **Szint oszlop hozzáadása (Bronz/Ezüst/Arany)**
+        bins = [-1, 500, 1000, float('inf')]  # 0-500 Bronz, 501-1000 Ezüst, >1000 Arany
+        labels = ["Bronz", "Ezüst", "Arany"]
+        merged["szint"] = pd.cut(merged["referencia_legjobb"], bins=bins, labels=labels)
+        merged_hu["szint"] = merged["szint"]
+        
+        print("\nSzintek pontszám alapján:")
+        szint_stats = merged_hu["szint"].value_counts().sort_index()
+        for szint, count in szint_stats.items():
+            print(f"   {szint}: {count} játékos")
+        
+        # **Javulási összefoglaló**
+        javult_players = merged[merged["javulas"] > 0]
+        osszes_players = len(merged)
+        javult_szam = len(javult_players)
+        
+        print(f"\n📈 JAVULÁSI ÖSSZEFOGLALÓ:")
+        print(f"   - Összes játékos: {osszes_players}")
+        print(f"   - Javulást elért: {javult_szam} játékos ({javult_szam/osszes_players*100:.1f}%)")
+        print(f"   - Stagnált/romlott: {osszes_players-javult_szam} játékos")
+        
+        if javult_szam > 0:
+            avg_improvement = javult_players["javulas"].mean()
+            print(f"   - Átlagos javulás: {avg_improvement:.1f} pont")
+            best_improvement = javult_players["javulas"].max()
+            best_player = javult_players.loc[javult_players["javulas"].idxmax(), "player"]
+            print(f"   - Legnagyobb javulás: {best_player} ({best_improvement:.0f} pont)")
+
+        # **Top 5 listák mentése CSV és HTML formátumban**
+        TOP_N = 5
         top_javulas = merged.sort_values("javulas", ascending=False).head(TOP_N)
         top_legjobb = merged.sort_values("referencia_legjobb", ascending=False).head(TOP_N)
 
-        # Magyar oszlopnevek a mentéshez
+        # Magyar oszlopnevek a mentéshez (szinttel együtt)
         top_javulas_hu = top_javulas.rename(columns={"player": "jatekos"})
         top_legjobb_hu = top_legjobb.rename(columns={"player": "jatekos"})
-
-        # Könyvtár ellenőrzése és mentés az assets/csv mappába
-        import os
-        os.makedirs("assets/csv", exist_ok=True)
         
+        # Szint oszlop hozzáadása a top listákhoz is
+        top_javulas_hu["szint"] = top_javulas["szint"]
+        top_legjobb_hu["szint"] = top_legjobb["szint"]
+
+        # Könyvtár ellenőrzése és mentés
+        os.makedirs("assets/csv", exist_ok=True)
+        os.makedirs("assets/html", exist_ok=True)
+        
+        # CSV mentés
         top_javulas_hu.to_csv("assets/csv/top_javulas.csv", index=False, encoding="utf-8")
         top_legjobb_hu.to_csv("assets/csv/top_legjobb.csv", index=False, encoding="utf-8")
+        
+        # HTML mentés
+        top_javulas_hu.to_html("assets/html/top_javulas.html", index=False, encoding="utf-8")
+        top_legjobb_hu.to_html("assets/html/top_legjobb.html", index=False, encoding="utf-8")
 
-        print("Mentve: assets/csv/top_javulas.csv, assets/csv/top_legjobb.csv")
+        print("\nMentve CSV: assets/csv/top_javulas.csv, assets/csv/top_legjobb.csv")
+        print("Mentve HTML: assets/html/top_javulas.html, assets/html/top_legjobb.html")
               
     except FileNotFoundError:
         print("\n❌ highscore.json nem található - javulási analízis kihagyva")
@@ -199,3 +247,4 @@ def main() -> Optional[None]:
 
 if __name__ == "__main__":
     main()
+    

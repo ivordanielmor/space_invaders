@@ -83,11 +83,11 @@ Mód:  HYBRID  | Score:  1860  | Lives:  2
 
 ---
 
-## 📂 CSV Management & Leaderboards (csv_helper)
+## 📂 CSV Management & Advanced Analytics
 
-The csv_helper module handles CSV loading, cleaning and leaderboard generation.
+The project includes comprehensive CSV management and analytics tools for tracking player performance and generating detailed statistics.
 
-### Main functions
+### Core CSV Functions (csv_helper)
 
 - **`load_and_clean(path: str) -> pd.DataFrame`**  
   Loads and cleans a CSV. Required columns: player, score. Raises FileNotFoundError, ValueError.
@@ -104,7 +104,60 @@ The csv_helper module handles CSV loading, cleaning and leaderboard generation.
 - **`season_leaderboard() -> Optional[pd.DataFrame]`**  
   Wrapper: merge → add tiers → save (season_leaderboard.csv/.html) → returns DataFrame.
 
-### Common runner scripts
+### Analytics & Statistics Scripts
+
+#### **`run_stats.py`** — Advanced Player Analytics
+Comprehensive statistics generator that analyzes player performance, improvement trends, and generates detailed reports.
+
+**Features:**
+- **Player Performance Analytics:** Average, median, best scores, and game counts per player
+- **Improvement Analysis:** Compares first vs. best performance, tracks player development
+- **Tier Classification:** Bronze (0-500), Silver (501-1000), Gold (1000+) based on best scores
+- **Top Performance Lists:** Generates Top 5 lists for both improvement and best scores
+- **Multi-format Output:** Saves results in both CSV and HTML formats
+
+**Usage:**
+```bash
+# Prerequisites: Clean data first
+python run_load_csv.py
+
+# Generate comprehensive analytics
+python run_stats.py
+```
+
+**Sample Output:**
+```
+🎮 SPACE INVADERS STATISZTIKÁK
+📊 Tisztított CSV adatok:
+   - Összes játék: 17
+   - Játékosok száma: 7
+   - Legmagasabb pontszám: 1690
+
+👥 JÁTÉKOSONKÉNTI STATISZTIKÁK:
+jatekos  atlag  median  legjobb  jatekok_szama
+    Mór  595.7   610.0     1690              7
+ Player  340.0   315.0      510              4
+
+Szintek pontszám alapján:
+   Bronz: 5 játékos
+   Ezüst: 1 játékos  
+   Arany: 1 játékos
+
+📈 JAVULÁSI ÖSSZEFOGLALÓ:
+   - Javulást elért: 3 játékos (42.9%)
+   - Átlagos javulás: 659.3 pont
+   - Legnagyobb javulás: Mór (1590 pont)
+
+Mentve: assets/csv/top_javulas.csv, assets/html/top_javulas.html
+```
+
+**Generated Files:**
+- `assets/csv/top_javulas.csv` — Top 5 player improvements (CSV)
+- `assets/csv/top_legjobb.csv` — Top 5 best scores (CSV)
+- `assets/html/top_javulas.html` — Top 5 improvements (HTML table)
+- `assets/html/top_legjobb.html` — Top 5 best scores (HTML table)
+
+#### Other CSV Management Scripts
 
 - **`run_load_csv.py`** — load & clean (saves: scoreboard_clean.csv)
 - **`run_best.py`** — process single file, Top N and save (leaderboard_best.csv/.html)
@@ -121,10 +174,18 @@ best = best_per_player(df)
 merged = merge_scoreboards("assets/csv/scoreboard_day*.csv")
 ```
 
+### Analytics Integration with JSON
+The analytics system integrates with `highscore.json` to compare historical performance:
+- Uses JSON data as baseline when available
+- Falls back to CSV best scores for missing players
+- Calculates improvement from first recorded game to best performance
+
 ### Tips
 
-- Ensure CSVs include 'player' and 'score'.
-- For large-scale processing enable logging and consider chunking.
+- Ensure CSVs include 'player' and 'score' columns
+- Run `run_load_csv.py` before analytics to clean data
+- HTML files can be opened in browsers for formatted viewing
+- For large-scale processing enable logging and consider chunking
 
 ---
 
@@ -214,11 +275,11 @@ Mód:  HYBRID  | Score:  1860  | Lives:  2
 
 ---
 
-## 📂 CSV kezelés és ranglisták (csv_helper)
+## 📂 CSV kezelés és fejlett analitika
 
-A csv_helper modul kezeli a CSV betöltést, tisztítást és ranglista generálást.
+A projekt átfogó CSV kezelést és analitikai eszközöket tartalmaz a játékos teljesítmény követéséhez és részletes statisztikák generálásához.
 
-### Főbb függvények
+### Alap CSV funkciók (csv_helper)
 
 - **`load_and_clean(path: str) -> pd.DataFrame`**  
   CSV betöltés és tisztítás. Szükséges oszlopok: player, score. FileNotFoundError, ValueError kivételeket dobhat.
@@ -235,7 +296,35 @@ A csv_helper modul kezeli a CSV betöltést, tisztítást és ranglista generál
 - **`season_leaderboard() -> Optional[pd.DataFrame]`**  
   Wrapper: merge → tiers hozzáadása → mentés (season_leaderboard.csv/.html) → DataFrame visszaadás.
 
-### Gyakori futtatószkriptek
+### Analitikai és statisztikai szkriptek
+
+#### **`run_stats.py`** — Fejlett játékos analitika
+Átfogó statisztikagenerátor, amely elemzi a játékos teljesítményét, javulási trendeket és szint besorolást végez.
+
+**Funkciók:**
+- Játékos teljesítmény analitika (átlag, medián, legjobb pontszámok, játékszám)
+- Javulási elemzés első és legjobb teljesítmény összehasonlításával
+- Szint besorolás: Bronz (0-500), Ezüst (501-1000), Arany (1000+)
+- Top 5 listák javulás és legjobb pontszámok alapján
+- CSV és HTML kimeneti formátumok
+- JSON integráció történelmi alapérték összehasonlításhoz
+
+**Használat:**
+```bash
+# Előfeltétel: Először tisztítsd az adatokat
+python run_load_csv.py
+
+# Analitika generálása
+python run_stats.py
+```
+
+**Generált fájlok:**
+- `assets/csv/top_javulas.csv` — Top 5 játékos javulás
+- `assets/csv/top_legjobb.csv` — Top 5 legjobb pontszámok
+- `assets/html/top_javulas.html` — Top 5 javulások (HTML)
+- `assets/html/top_legjobb.html` — Top 5 legjobb pontszámok (HTML)
+
+#### Egyéb CSV kezelő szkriptek
 
 - **`run_load_csv.py`** — betöltés és tisztítás (menti: scoreboard_clean.csv)
 - **`run_best.py`** — egy fájl feldolgozása, Top N és mentés (leaderboard_best.csv/.html)
@@ -252,10 +341,18 @@ best = best_per_player(df)
 merged = merge_scoreboards("assets/csv/scoreboard_day*.csv")
 ```
 
+### Analitika integrációja JSON-nal
+Az analitikai rendszer integrálódik a `highscore.json`-nal a történelmi teljesítmény összehasonlításához:
+- JSON adatokat használ alapértékként, ha elérhető
+- A hiányzó játékosokhoz a CSV legjobb pontszámokat használja
+- Kiszámolja a javulást az első rögzített játéktól a legjobb teljesítményig
+
 ### Tippek
 
-- Győződj meg róla, hogy a CSV-k tartalmazzák a 'player' és 'score' oszlopokat.
-- Nagy méretű feldolgozáshoz engedélyezd a naplózást és fontold meg a darabokra bontást.
+- Győződj meg róla, hogy a CSV-k tartalmazzák a 'player' és 'score' oszlopokat
+- Az analitika előtt futtasd a `run_load_csv.py`-t az adatok tisztításához
+- A HTML fájlokat böngészőkben lehet megnyitni formázott megjelenítéshez
+- Nagy méretű feldolgozáshoz engedélyezd a naplózást és fontold meg a darabokra bontást
 
 ---
 

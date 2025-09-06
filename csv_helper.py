@@ -527,8 +527,8 @@ def season_leaderboard() -> Optional[pd.DataFrame]:
 
     leaderboard = add_tiers(merged_best)
     leaderboard.to_csv("assets/csv/season_leaderboard.csv", index=False, encoding="utf-8")
-    leaderboard.to_html("assets/csv/season_leaderboard.html", index=False)
-    print("Mentve: assets/csv/season_leaderboard.csv, assets/csv/season_leaderboard.html")
+    leaderboard.to_html("assets/html/season_leaderboard.html", index=False)
+    print("Mentve: assets/csv/season_leaderboard.csv, assets/html/season_leaderboard.html")
     return leaderboard
 
 if __name__ == "__main__":
