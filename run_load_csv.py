@@ -12,15 +12,14 @@ Kivételek:
     ValueError: Ha a CSV nem tartalmazza a 'player' és 'score' oszlopokat
 """
 from typing import Optional
-import os
 import pandas as pd
-from csv_helper import load_and_clean
+from csv_helper import load_and_clean, save_clean_csv
 import config as cfg
 
 
 def main() -> Optional[None]:
     """
-    Beolvassa és megtisztítja a CSV fájlt (cfg.CSV_PATH), ellenőrzi soronként,
+    Beolvassa és megtisztítja a CSV fájlt (str(SCOREBOARD_CSV)), ellenőrzi soronként,
     létrehozza a célkönyvtárat, és menti a tisztított fájlt.
 
     Paraméterek:
@@ -35,22 +34,20 @@ def main() -> Optional[None]:
     """
     # CSV betöltése és tisztítása
     df: pd.DataFrame = load_and_clean(cfg.CSV_PATH)
-
-    # Ellenőrzés (opcionális)
-    for index, row in df.iterrows():
-        print(f"{index}: {row.to_dict()}")
-
-    # Könyvtár ellenőrzése és létrehozása, ha nem létezik
-    save_dir = os.path.join("assets", "csv")
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Fájl mentése a kívánt mappába
-    cleaned_path = os.path.join(save_dir, "scoreboard_clean.csv")
-    df = df.copy()
-    df["score"] = df["score"].astype(int)
-    df.to_csv(cleaned_path, index=False, encoding="utf-8")
-    print(f"\nTisztított CSV mentve ide: {cleaned_path}")
-
+    
+    print(f"Betöltött sorok száma: {len(df)}")
+    
+    if df.empty:
+        print("Nincs adat a mentéshez.")
+        return
+    
+    # DataFrame -> dict lista konverzió
+    rows = df.to_dict('records')  # [{"player": "Mór", "score": 1690}, ...]
+    
+    # Mentés a csv_helper függvényével
+    save_clean_csv(rows, "assets/csv/scoreboard_clean.csv")
+    
+    print(f"Tisztított CSV mentve: assets/csv/scoreboard_clean.csv ({len(df)} sor)")
 
 if __name__ == "__main__":
     main()

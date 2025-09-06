@@ -28,8 +28,7 @@ import glob
 import pandas as pd
 from pathlib import Path
 from os import PathLike
-from typing import List, Tuple, Iterable, Mapping, Dict, Union
-import config as cfg
+from typing import List, Tuple, Iterable, Mapping, Dict, Union, Optional
 
 # --- Útvonal típus alias ---
 PathStr = Union[str, PathLike]
@@ -39,14 +38,14 @@ try:
     from config import CSV_DIR as _CFG_CSV_DIR, SCOREBOARD_CSV as _CFG_SCOREBOARD
     CSV_DIR: Path = Path(_CFG_CSV_DIR)
     SCOREBOARD_CSV: Path = Path(_CFG_SCOREBOARD)
-except Exception:
+except (ImportError, AttributeError):
     CSV_DIR = Path("assets") / "csv"
     SCOREBOARD_CSV = CSV_DIR / "scoreboard.csv"
 
 # Log kapcsoló
 DEBUG: bool = True  # állítsd False-ra, ha nem akarsz logolást
 
-def load_and_clean(path=cfg.CSV_PATH):
+def load_and_clean(path=str(SCOREBOARD_CSV)):
     """
     CSV beolvasása és tisztítása Pandas segítségével.
     
@@ -61,36 +60,62 @@ def load_and_clean(path=cfg.CSV_PATH):
         FileNotFoundError: Ha a CSV fájl nem található
     """
     try:
-        # CSV beolvasása
-        df = pd.read_csv(path, encoding="utf-8")
+        df = pd.read_csv(str(path), 
+                        encoding="utf-8",
+                        sep=',',
+                        quotechar='"',
+                        skipinitialspace=True,
+                        on_bad_lines='skip',
+                        engine='python')
         
-        # Egységesítés: keressük a 'player' és 'score' oszlopot, akár eltérő nagybetűzéssel
+        print(f"Eredeti sorok száma: {len(df)}")
+        print(f"Oszlopok: {list(df.columns)}")
+        print("Első 5 sor:")
+        print(df.head())
+        
+        if df.empty:
+            return pd.DataFrame(columns=["player", "score"])
+        
+        # Oszlop keresés
         cols = {c.lower().strip(): c for c in df.columns}
         player_col = cols.get("player", "player")
         score_col = cols.get("score", "score")
         
-        # Ellenőrizzük, hogy megvannak-e a szükséges oszlopok
         if player_col not in df.columns or score_col not in df.columns:
             raise ValueError("A CSV-ben legyen 'player' és 'score' oszlop!")
         
-        # Whitespace levágása, pontszám számmá alakítása
+        print(f"Player oszlop: {player_col}, Score oszlop: {score_col}")
+        
+        # Tisztítás lépésenként
+        print(f"Tisztítás előtt: {len(df)} sor")
+        
+        # String-gé alakítás és whitespace eltávolítás
         df[player_col] = df[player_col].astype(str).str.strip()
         df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
         
-        # Üres nevek, hibás/negatív pontok eldobása
+        print("Score oszlop numerikus konverzió után:")
+        print(df[score_col].describe())
+        
+        # Dropna
         df = df.dropna(subset=[player_col, score_col])
+        print(f"dropna után: {len(df)} sor")
+        
+        # Üres nevek szűrése
         df = df[df[player_col] != ""]
+        print(f"Üres nevek szűrése után: {len(df)} sor")
+        
+        # Negatív pontok szűrése
         df = df[df[score_col] >= 0]
+        print(f"Negatív pontok szűrése után: {len(df)} sor")
         
-        # Visszaadjuk egységes oszlopnevekkel
-        return df.rename(columns={player_col: "player", score_col: "score"})[["player", "score"]]
+        result = df.rename(columns={player_col: "player", score_col: "score"})[["player", "score"]]
+        print(f"Végső tisztított adatok:")
+        print(result)
         
-    except FileNotFoundError:
-        print(f"A fájl nem található: {path}")
-        # Üres DataFrame visszaadása hibás esetben
-        return pd.DataFrame(columns=["player", "score"])
+        return result
+        
     except Exception as e:
-        print(f"Hiba történt a fájl feldolgozása során: {e}")
+        print(f"Hiba: {e}")
         return pd.DataFrame(columns=["player", "score"])
 
 def debug_print(*args, **kwargs) -> None:
@@ -126,7 +151,7 @@ def _ensure_parent_dir(path: PathStr) -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
-def init_csv(path: PathStr = cfg.CSV_PATH) -> None:
+def init_csv(path: PathStr = str(SCOREBOARD_CSV)) -> None:
     """Inicializálja a ranglista CSV-t, fejlécet ír, ha hiányzik vagy üres.
 
     Paraméterek:
@@ -150,7 +175,7 @@ def init_csv(path: PathStr = cfg.CSV_PATH) -> None:
             writer.writerow(["player", "score"])
 
 
-def save_score(player: str = "Player", score: int = 0, path: PathStr = cfg.CSV_PATH) -> None:
+def save_score(player: str = "Player", score: int = 0, path: PathStr = str(SCOREBOARD_CSV)) -> None:
     """Nyers pontszám hozzáfűzése a ranglistához.
 
     Paraméterek:
@@ -178,7 +203,7 @@ def save_score(player: str = "Player", score: int = 0, path: PathStr = cfg.CSV_P
         debug_print(f"Hiba a pontszám mentésekor: {e}")
 
 
-def load_top5(path: PathStr = cfg.CSV_PATH) -> List[Tuple[str, int]]:
+def load_top5(path: PathStr = str(SCOREBOARD_CSV)) -> List[Tuple[str, int]]:
     """Top 5 sor visszaadása (player, score) tuple-listaként.
 
     Paraméterek:
@@ -258,7 +283,7 @@ def save_clean_csv(rows: Iterable[Mapping[str, object]],
         debug_print(f"Hiba a fájl írása közben: {e}")
 
 
-def load_scores_clean(path: PathStr = cfg.CSV_PATH) -> List[dict]:
+def load_scores_clean(path: PathStr = str(SCOREBOARD_CSV)) -> List[dict]:
     """Ranglista beolvasása és megtisztítása.
 
     Szabályok:
@@ -334,7 +359,7 @@ def to_sorted_list(best_map: Dict[str, int]) -> List[dict]:
     return items
 
 
-def print_top5(path: PathStr = cfg.CSV_PATH) -> None:
+def print_top5(path: PathStr = str(SCOREBOARD_CSV)) -> None:
     """Top 5 kiírása és tiszta CSV mentése ugyanabba a könyvtárba.
 
     Paraméterek:
@@ -368,7 +393,7 @@ def print_top5(path: PathStr = cfg.CSV_PATH) -> None:
         print(f"{i}. {r['player']} — {r['score']} pont")
 
 
-def save_score_if_record(player: str = "Player", score: int = 0, path: PathStr = cfg.CSV_PATH) -> bool:
+def save_score_if_record(player: str = "Player", score: int = 0, path: PathStr = str(SCOREBOARD_CSV)) -> bool:
     """Csak rekord esetén ment új pontot a CSV-be.
 
     Paraméterek:
